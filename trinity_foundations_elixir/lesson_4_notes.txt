@@ -1,0 +1,79 @@
+================================================================================
+LESSON 4 NOTES: LOW-RANK COMPRESSION & SINGULAR VALUE FINE-TUNING (SVF)
+================================================================================
+
+1. LOW-RANK ADAPTATION (LORA) RECAP
+-----------------------------------
+LoRA adds a trainable parallel bypass route to a frozen pre-trained weight 
+matrix W_0:
+  W_new = W_0 + B · A
+Where:
+  - W_0 has shape {D, D} and is frozen.
+  - A has shape {r, D} (compresses from D to rank r) and is trainable.
+  - B has shape {D, r} (expands from rank r back to D) and is trainable.
+
+For a rank r (e.g., r = 8) and dimension D = 4096, LoRA reduces the number of 
+trainable parameters from 16.7 million down to 65,536 (a 99.6% reduction). All 
+elements of A and B are learned from scratch.
+
+
+2. WHAT IS SINGULAR VALUE FINE-TUNING (SVF)?
+--------------------------------------------
+Singular Value Fine-tuning (SVF) is an alternative parameter-efficient 
+adaptation method that works directly on the pre-trained weight matrix rather 
+than adding an external parallel bypass. Here is how it operates:
+
+A. SVD Decomposition:
+   First, we decompose the pre-trained weight matrix W_0 using Singular Value 
+   Decomposition (SVD):
+     W_0 = U · Σ · V^T
+   Where:
+     - U represents the output coordinate directions (orthogonal basis).
+     - V^T represents the input coordinate directions (orthogonal basis).
+     - Σ (Sigma) is a diagonal matrix of singular values (representing the energy 
+       or gain along each coordinate direction).
+
+B. Freezing the Coordinates:
+   SVF **freezes** the orthogonal matrices U and V^T. These pre-trained coordinate 
+   axes represent the complex semantic concepts the model learned during its 
+   massive pre-training phase.
+
+C. Fine-Tuning the Singular Diagonal:
+   Only the **diagonal elements of the singular matrix Σ** are made trainable! 
+   During fine-tuning, the optimization loop only adjusts these singular values 
+   to adapt the model to a new task:
+     W_adapted = U · (Σ + ΔΣ) · V^T
+
+
+3. WHY SVF IS AN EVEN MORE EXTREME LOW-RANK METHOD
+--------------------------------------------------
+
+A. Extreme Parameter Reduction
+   Because we are only tuning the diagonal elements of the Σ matrix, the number 
+   of trainable parameters is O(D) (specifically, D parameters) rather than 
+   LoRA's O(D · r) (specifically, 2 · D · r parameters).
+   - For D = 4096, LoRA (r = 8) requires training **65,536** parameters.
+   - Under SVF, we only train the diagonal singular values: **4,096** parameters!
+   - This represents an additional **16x reduction** in parameters compared 
+     to LoRA.
+
+B. Geometric Concept Preservation (No Axis Learning)
+   SVD isolates the pre-trained concepts along the orthogonal axes of U and V. 
+   SVF assumes that the pre-trained conceptual coordinate axes are already 
+   optimal. We do not need to learn new conceptual directions (which is what 
+   LoRA does by learning A and B). 
+   - Instead, we only need to adjust the **gain (emphasis/attenuation)** along 
+     the pre-established pre-trained coordinate axes to adapt the model to the 
+     new task.
+   - For example, if we are adapting the model to a "Math Task", SVF will 
+     exponentially scale up the singular values corresponding to the "Math" 
+     coordinate axes, and scale down the singular values of unrelated axes (like 
+     "Writing").
+
+C. Zero Inference Computation Overhead
+   Since SVF adapts the weights in-place within the pre-trained matrix structure 
+   (W_adapted = U · Σ_adapted · V^T), it does not require adding a parallel bypass 
+   stream. 
+   - At inference time, the model executes a single, standard matrix multiplication 
+     (X · W_adapted), completely eliminating the parallel additions, scaling, and 
+     routing math required by LoRA!

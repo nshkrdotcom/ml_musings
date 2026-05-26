@@ -1,0 +1,81 @@
+================================================================================
+LESSON 3 NOTES: SELF-ATTENTION MECHANICS & THE GEOMETRY OF VECTOR ROUTING
+================================================================================
+
+1. HOW SELF-ATTENTION PHYSICALLY ROUTES COORDINATES
+---------------------------------------------------
+Self-Attention is not an abstract statistical formula — it is a physical, 
+dynamic coordinate-space routing mechanism. Here is how it operates:
+
+A. The Input Position:
+   Each token i starts as a hidden state vector h_i in a high-dimensional space 
+   (e.g., D = 4096). This vector holds its starting semantic coordinates.
+
+B. The Dynamic Projections:
+   - Queries (q_i = W_Q · h_i): Represent the "search query" vector of the token, 
+     stating what other coordinates it is looking to acquire.
+   - Keys (k_j = W_K · h_j): Represent the "context index" vector of other tokens, 
+     stating what coordinates they possess.
+   - Values (v_j = W_V · h_j): Represent the actual, raw semantic coordinate step 
+     that token j is willing to share.
+
+C. Matchmaking & Extraction:
+   - By computing the dot product (q_i · k_j), token i checks how aligned its 
+     search query is with the context of token j.
+   - Softmax converts these dot products into a set of routing weights 
+     (attention percentages) that sum to 100%.
+   - The head computes a weighted average of the Value vectors:
+       h_attention = Sum( s_j * v_j )
+     Geometrically, h_attention is a composite vector representing the blended 
+     semantic coordinates extracted from the context.
+
+
+2. THE RESIDUAL STREAM AND MANIFOLD TRANSLATION
+-----------------------------------------------
+Once the attention output h_attention is computed, it is passed through a 
+projection matrix and **added** directly to the token's original hidden state 
+vector h_original via the residual stream:
+  h_updated = h_original + h_attention
+
+Geometrically, this is **Vector Addition**. Vector addition represents a 
+**Translation** (a coordinate shift) in the high-dimensional vector space!
+
+```text
+               Feature 2 (Coordinate 2)
+                           ▲
+                           │          h_updated
+                           │          ● (Feline performing a sitting action)
+                           │         /▲
+                           │        / │ h_attention (Sitting Action Vector)
+                           │       /  │ (Extracted from "sat" via attention)
+                           │      ●───┘
+                           │   h_original ("cat" Feline Cluster)
+                           │
+                           └────────────────────────► Feature 1 (Coordinate 1)
+```
+
+In Lesson 2, you learned that semantic concepts form distinct, linearly separable 
+clusters (manifolds) inside the vector space. Here is how the translation shift 
+affects a token's position in this manifold:
+
+A. Shifting Across Decision Boundaries:
+   - The word "cat" initially resides inside the generic "feline" semantic cluster. 
+     A downstream linear probe checking for "action" would predict 0.0 (Class: No).
+   - In the sentence "The cat sat", the attention head of "cat" queries the verb 
+     "sat", extracts the coordinate vector for "sitting action", and adds it to 
+     "cat".
+   - This vector addition translates "cat"'s coordinates, physically moving it 
+     OUT of the generic "feline" cluster and TOWARDS the "feline performing an 
+     action" coordinate region.
+   - By shifting the token along the manifold, the vector addition **pushes the 
+     token's coordinates across the separating hyperplane (decision boundary)** 
+     of the downstream "action" linear probe. The probe now predicts 1.0 (Class: Yes)!
+
+B. Linear Superposition and Multi-Head Routing:
+   Because the vector space is high-dimensional (D >= 4096) and random directions 
+   are quasi-orthogonal (Lesson 1), a token can receive multiple independent 
+   vector translations simultaneously from different attention heads.
+   - Head 1 can translate "cat" towards the "feline" + "actor" coordinate.
+   - Head 2 can translate "cat" towards the "feline" + "singular subject" coordinate.
+   - These independent translation steps are simply added together, shifting the 
+     coordinates along multiple orthogonal axes with zero cross-talk or interference!

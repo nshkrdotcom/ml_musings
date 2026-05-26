@@ -1,0 +1,84 @@
+================================================================================
+LESSON 2 NOTES: REPRESENTATIONAL GEOMETRY & THE POWER OF LINEAR PROBES
+================================================================================
+
+1. WHAT IS A LINEAR PROBE?
+--------------------------
+In machine learning interpretability, a "Linear Probe" is a simple linear classifier 
+(e.g., a single logistic regression layer) trained to predict a specific semantic 
+feature (like "is the text a math task?") directly from a model's internal hidden 
+states h. 
+
+Mathematically, the probe is defined by a weight vector w and a bias scalar b:
+  z = w · h + b
+  y_pred = Sigmoid(z)
+
+Geometrically, the equation "w · h + b = 0" defines a flat boundary called a 
+"separating hyperplane". The weights vector w is perpendicular to this hyperplane, 
+and the bias b shifts it away from the origin. 
+  - If a hidden state vector h lies on one side of the hyperplane (w · h + b > 0), 
+    it is classified as positive.
+  - If it lies on the other side (w · h + b < 0), it is classified as negative.
+
+
+2. THE MYSTERY OF PROBING: WHY DO LINEAR PROBES WORK SO WELL?
+-------------------------------------------------------------
+It is a striking empirical fact in modern AI research that simple linear probes 
+achieve near 100% accuracy at detecting highly abstract concepts (e.g., factual 
+truth, sentiment, translation, task format) inside LLM activation spaces (like 
+the residual stream of Llama-3-70B). 
+
+They do this without needing deep, multi-layer neural networks. Why is a simple, 
+flat hyperplane sufficient to extract complex abstract human concepts?
+
+This phenomenon is explained by three geometric principles:
+
+A. The Manifold Hypothesis
+   The Manifold Hypothesis states that high-dimensional real-world data (such 
+   as natural language tokens) resides on a much lower-dimensional, highly 
+   curved, and convoluted subspace (a manifold) embedded within the massive 
+   ambient vector space.
+   - Early in the network (e.g., Layer 0), the representation is a highly tangled 
+     spaghetti of syntax and spelling. A linear boundary cannot separate "Math" 
+     from "Writing" at this stage because the manifold is extremely twisted.
+   - However, as the vector passes through the Transformer layers, the Attention 
+     heads and Multi-Layer Perceptrons (MLPs) perform non-linear transformations 
+     that "untangle" the manifold.
+   - By the intermediate layers, the manifold has been untangled and flattened. 
+     The semantic features are projected into flat, distinct subspaces.
+
+B. High-Dimensional Separability (Cover's Theorem)
+   In a low-dimensional space (e.g., D = 2), complex classification boundaries 
+   often require highly curved, non-linear shapes (like circles or spirals) to 
+   separate data points. 
+   - However, Cover's Theorem on Separability states that as the dimensionality 
+     D of a vector space increases, the probability that a random set of training 
+     points is linearly separable approaches 1.0.
+   - In high-dimensional spaces (e.g., D = 4096 or 8192 in LLMs), the volume of 
+     the space is incredibly vast. Semantic clusters are sparse and geographically 
+     isolated (due to quasi-orthogonality).
+   - Because these clusters are so isolated in high-D, you do not need curved 
+     boundaries to navigate between them. A single, flat hyperplane is mathematically 
+     guaranteed to be able to slice cleanly between the feature clusters.
+
+C. The Residual Stream as a Semantic Blackboard
+   In Transformer architectures, the hidden state h is continually updated via 
+   a "residual stream" (h_next = h_prev + Layer_Output). 
+   - Geometrically, this means layers write information to the hidden state by 
+     performing vector additions.
+   - Linear projections (dot products) are highly compatible with vector addition. 
+     If the model represents concepts linearly, a downstream routing layer or 
+     linear probe can extract these updates instantly using a simple dot product 
+     (shadow projection) without picking up noise from other orthogonal directions.
+
+
+3. THE DUALITY: PROBES AS AGENT ROUTERS
+---------------------------------------
+In multi-agent coordination runtimes (such as TRINITY), we exploit this exact 
+representational geometry:
+  - We train weight vectors w_i (representing different experts, prompts, or roles).
+  - When an incoming task vector h passes through the system, we compute:
+      Scores = [w_1 · h, w_2 · h, ... w_n · h]
+  - Because of the untangled geometry of representation space, the dot product 
+    acts as a high-fidelity semantic alignment sensor, routing the task vector 
+    to the expert whose coordinate weights point in the exact same direction.
