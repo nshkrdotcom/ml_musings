@@ -30,7 +30,7 @@ q · k = q₁k₁ + q₂k₂ + q₃k₃ + ... + q_Dk_D
 
 If `D` is small, the sum stays modest.
 
-If `D = 1024`, you are adding 1024 terms.
+For D-dimensional vectors with unit-variance components, the dot product has variance D and standard deviation √D. At D=1024, a typical dot product is ~32 units wide in spread, not ~1.
 
 Even if each term is random-ish, the total score can get large.
 
@@ -63,7 +63,7 @@ Example:
 might become:
 
 ```text
-[0.09, 0.24, 0.67]
+[0.090, 0.245, 0.665]
 ```
 
 That is healthy. Multiple tokens still matter.
@@ -92,7 +92,7 @@ At first, collapse sounds useful:
 
 > “Great, the model found the important token.”
 
-But during training, it is dangerous.
+But during training, it is dangerous. Collapse is also problematic even at inference: many linguistic phenomena require soft attention over multiple tokens simultaneously (e.g., coreference resolution or blending multi-word concepts).
 
 If softmax becomes almost exactly:
 
@@ -166,7 +166,7 @@ One token can still be strongest, but the others are not dead.
 
 Scaling does not change the logic of attention.
 
-It changes the **temperature**.
+It changes the **temperature**. This is equivalent to setting the softmax *temperature* to `sqrt(d_k)` (in terms of scaling the raw inputs) — higher temperature produces softer, more uniform distributions.
 
 Unscaled attention is like a person who instantly shouts:
 
@@ -192,6 +192,8 @@ Because the variance of the raw dot product grows with dimension:
 Var(q · k) ≈ d_k
 ```
 
+This holds when query and key components are approximately zero-mean with unit variance, which layer normalization encourages.
+
 The standard deviation grows as:
 
 ```text
@@ -213,7 +215,7 @@ Trainable.
 1. Creates high-dimensional random attention scores.
 2. Applies softmax without scaling.
 3. Applies softmax with scaling.
-4. Computes the Jacobian to show that the unscaled case has nearly dead gradients.
+4. Computes and prints both Jacobians numerically, showing the L1 ratio between scaled and collapsed cases to demonstrate that the unscaled case has nearly dead gradients.
 
 That last part matters.
 
@@ -242,7 +244,7 @@ Scaling by `sqrt(d_k)` keeps the vote competitive.
 ```text
 QKᵀ                 = raw match scores
 QKᵀ / sqrt(d_k)     = stabilized match scores
-softmax(...)        = attention percentages
+softmax(...)        = attention probability distribution
 softmax(...) V      = blended information
 ```
 

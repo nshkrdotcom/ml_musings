@@ -88,6 +88,7 @@ Where:
 | `b`     | bias / offset                                           |
 | `w · x` | dot product alignment between input and class direction |
 | `z`     | raw score before probability                            |
+| `sign(z)`| positive: leans Class 1; negative: leans Class 0       |
 
 Then it applies sigmoid:
 
@@ -104,17 +105,15 @@ near 0.0 → Class 0, Math
 near 1.0 → Class 1, Writing
 ```
 
+The class assignment (which label is 0 vs 1) is arbitrary; what matters is that the sigmoid maps one half-space to high probability and the other to low probability.
+
 ---
 
 # 4. What the Probe Is Really Learning
 
 The weights `w` are not just “parameters.”
 
-Geometrically, `w` is a direction in space.
-
-It says:
-
-> “This is the axis along which Math and Writing differ.”
+Geometrically, `w` is the normal vector to the separating hyperplane. It points from the Class 0 region toward the Class 1 region. In well-separated data it approximates but is not identical to the axis of maximal class separation.
 
 So when you train a linear probe, you are discovering a semantic axis.
 
@@ -145,7 +144,7 @@ code vs. natural language
 positive vs. negative sentiment
 ```
 
-If a linear probe succeeds, it suggests the model’s internal vectors already contain that information in a readable geometric form.
+If a linear probe succeeds, it suggests the model’s internal vectors already contain that information in a readable geometric form. Probe success on training data alone is meaningless in high dimensions — linear separability is almost guaranteed regardless of whether real structure exists. Only out-of-distribution validation accuracy with regularization counts.
 
 The probe does not create the knowledge.
 
@@ -169,7 +168,7 @@ L2 regularization penalizes large weights:
 loss = classification_error + λ * sum(w²)
 ```
 
-This encourages the probe to find a simpler separating direction.
+Geometrically, L2 regularization keeps `||w||` small, which means the decision boundary stays near the origin and the classifier doesn't exploit large-magnitude directions that may be noise. This encourages the probe to find a simpler separating direction.
 
 The intuition:
 
@@ -263,7 +262,7 @@ The most important thing to inspect is not just the accuracy.
 
 Look at the final weights.
 
-Those weights are the learned semantic direction.
+The final weight *direction* (normalized `w/||w||`) approximates the semantic axis, but its magnitude reflects the regularization strength, not the strength of the signal.
 
 ---
 
@@ -295,7 +294,7 @@ After running the script, answer:
 | Regularization       | Penalty that discourages overfitting                |
 | L2 weight decay      | Penalizes large squared weights                     |
 | Validation set       | Unseen data used to test generalization             |
-| Semantic axis        | Direction in representation space tied to meaning   |
+| Semantic axis        | Direction in representation space tied to meaning (as approximated by the probe's weight direction; exact axis depends on probe training details) |
 
 ---
 

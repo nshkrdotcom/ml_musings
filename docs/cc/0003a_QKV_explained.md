@@ -44,6 +44,8 @@ K_sat = "I am an action / past-tense verb"
 V_sat = "Here is my actual sitting/action information"
 ```
 
+These descriptions are illustrative; the actual geometric content of Q, K, V vectors is determined by training and not directly interpretable in natural language terms.
+
 Attention works by comparing:
 
 ```text
@@ -91,15 +93,15 @@ A hashmap has:
 key -> value
 ```
 
-You provide an exact key, and it retrieves one value.
+You provide an exact key, and it retrieves one value. In a hashmap you look up using the key itself. In attention, the token generates a separate Query specifically for searching — it's like having a search interface distinct from your identity card.
 
 Attention is softer and more geometric:
 
 ```text
 query compares against all keys
 query gets similarity scores
-softmax turns scores into percentages
-values are blended using those percentages
+softmax turns scores into a probability distribution
+values are blended using that distribution
 ```
 
 So instead of:
@@ -135,7 +137,7 @@ That is the key mental shift:
 
 # Why not just use the original token vector?
 
-Because the same token needs to play different roles.
+Because the same token needs to play different roles. If a single vector were used for all three roles, high attention score (Q·K large) would be coupled to large value contribution — the model couldn't independently control "this token is relevant to search" vs "this token contributes a lot of content." Separate projections decouple these.
 
 A token may need one representation for asking questions, another for being searched, and another for passing content forward.
 
@@ -177,7 +179,7 @@ softmax(QKᵀ / sqrt(d))
 
 think:
 
-> “Those comparisons are being turned into attention percentages.”
+> “Those comparisons are being turned into an attention probability distribution.”
 
 When you see:
 
@@ -216,15 +218,15 @@ sat: 1.1
 Softmax turns that into:
 
 ```text
-The: 13%
-cat: 65%
-sat: 22%
+The: 11.9%
+cat: 58.9%
+sat: 29.2%
 ```
 
 Then the new `"cat"` representation becomes:
 
 ```text
-0.13 * V_the + 0.65 * V_cat + 0.22 * V_sat
+0.119 * V_the + 0.589 * V_cat + 0.292 * V_sat
 ```
 
 So `"cat"` keeps mostly itself, but also absorbs useful context from `"the"` and `"sat"`.
@@ -245,8 +247,8 @@ The matched clues determine how much content gets mixed in.
 So:
 
 ```text
-Q asks.
-K matches.
-V speaks.
+Q searches.
+K is searchable.
+V is the result.
 ```
 

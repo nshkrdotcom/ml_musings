@@ -8,7 +8,7 @@ q · k = q₁k₁ + q₂k₂ + q₃k₃ + ... + q_dk_d
 
 The more dimensions you have, the more terms you add.
 
-Even if each individual term is modest, the total can wander farther from zero because many random-ish products accumulate. If the query and key components have roughly variance `1`, then:
+The mean stays near zero, but the *spread* (standard deviation) grows as √d_k, meaning individual dot products can be much larger in magnitude than in low dimensions. If the query and key components have roughly variance `1`, then:
 
 ```text
 Var(q · k) ≈ d_k
@@ -28,7 +28,7 @@ So a 1024-dimensional dot product can easily produce scores roughly tens of unit
 
 ## 2. What does softmax do to attention scores?
 
-Softmax turns raw scores into percentages that add up to `1`.
+Softmax turns raw scores into a probability distribution that adds up to `1`.
 
 Example:
 
@@ -39,15 +39,15 @@ scores = [1.0, 2.0, 3.0]
 Softmax might turn that into something like:
 
 ```text
-weights = [0.09, 0.24, 0.67]
+weights = [0.090, 0.245, 0.665]
 ```
 
 In attention, this means:
 
 ```text
-Token 1 gets 9% attention
-Token 2 gets 24% attention
-Token 3 gets 67% attention
+Token 1 gets 0.090 weighting
+Token 2 gets 0.245 weighting
+Token 3 gets 0.665 weighting
 ```
 
 So softmax converts “how strongly does this key match my query?” into “how much of each value should I read?”
@@ -74,7 +74,7 @@ weights = [0.0, 0.0, 1.0]
 
 That means one token receives almost all the attention, and the others are ignored.
 
-A little confidence is good. Collapse is different. Collapse means the model becomes extremely certain too early.
+Healthy attention distributions have one or a few tokens with meaningfully higher weights while others remain nonzero. Collapse means a near-binary distribution where the model has effectively hard-selected one token.
 
 ---
 
@@ -167,7 +167,7 @@ In plain terms, it answers:
 “If I slightly change this attention score, how much do the attention weights change?”
 ```
 
-When softmax is healthy, the Jacobian has meaningful nonzero values. That means small score changes can still change the attention distribution.
+When softmax is healthy, the Jacobian has meaningful nonzero values. In the non-collapsed case, the diagonal entries are approximately `s_i(1 - s_i)` and off-diagonals are `-s_i s_j`; both are nonzero when the distribution is spread out. That means small score changes can still change the attention distribution.
 
 When softmax collapses, the Jacobian becomes almost all zeros.
 
@@ -212,5 +212,5 @@ With scaling, attention becomes:
 
 That is the whole point.
 
-**Scaling preserves the model’s ability to learn nuanced relationships between tokens.**
+**Specifically, it keeps the softmax Jacobian entries at O(s_i(1-s_i)) ≈ O(0.1–0.25) for typical attention weights, rather than collapsing them to O(10⁻¹⁰) or smaller.**
 

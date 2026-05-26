@@ -1,4 +1,4 @@
-## Practice answers
+## CC2 Practice Answers
 
 1. **Two synthetic classes:** Math tasks and Writing tasks.
 
@@ -10,7 +10,7 @@
 
 5. **Why validation data is needed:** To check whether the probe learned the real pattern instead of memorizing the training set.
 
-6. **Why high-dimensional data can be dangerously easy to separate:** Random or meaningless patterns can look linearly separable just because high-dimensional space has so much room.
+6. **Why high-dimensional data can be dangerously easy to separate:** In D dimensions, any set of N < D points is almost certainly linearly separable regardless of label assignment, because the constraint count (N) is far less than the degrees of freedom (D). This is a consequence of the geometry of hyperplanes in high dimensions, not merely available 'room.'
 
 7. **What L2 regularization discourages:** Overly large weights and overly complex/fragile separating boundaries.
 
@@ -24,7 +24,7 @@ This maps mainly to `06_self_attention.exs` and `07_softmax_collapse.exs`.
 
 ## Core idea
 
-Self-attention lets each token decide:
+Self-attention lets each token decide (via trained weights that encode this decision function at inference, rather than a per-forward-pass learning event):
 
 > “Which other tokens should I listen to, and how much?”
 
@@ -46,11 +46,11 @@ Each token is projected into three versions of itself:
 | ----- | ----------------------------------- |
 | Query | What am I looking for?              |
 | Key   | What information do I contain?      |
-| Value | What information will I pass along? |
+| Value | What information do I contribute, weighted by how much others attend to me? |
 
 A token’s **Query** is compared against every other token’s **Key**.
 
-That comparison uses the dot product.
+That comparison uses the dot product. Dot product measures directional alignment; tokens with similar Query and Key *directions* will have high scores, which corresponds to semantic compatibility.
 
 ---
 
@@ -79,6 +79,8 @@ Query cat    ?     ?     ?
 Query sat    ?     ?     ?
 ```
 
+*(Note: Each `?` is a scalar: high means that query token should attend strongly to that key token.)*
+
 Each row answers:
 
 > “For this token, how much should I attend to every token?”
@@ -89,7 +91,7 @@ Each row answers:
 
 If vectors are high-dimensional, raw dot products can get too large.
 
-Large scores make softmax collapse into something almost one-hot:
+When scores have high variance — which happens when D_k is large, because dot product variance scales as D_k — softmax amplifies the gap between the max and all others exponentially, collapsing to near-one-hot:
 
 ```text
 [0.000, 0.999, 0.001]
@@ -109,7 +111,7 @@ This keeps scores in a healthy range.
 
 ## Softmax turns scores into attention weights
 
-Softmax converts raw scores into percentages:
+Softmax converts raw scores into a probability distribution:
 
 ```text
 [1.2, 4.5, 1.0]

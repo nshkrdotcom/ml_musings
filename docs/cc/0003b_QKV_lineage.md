@@ -71,7 +71,7 @@ encoder hidden states = key/value-like things
 attention weights = soft alignment
 ```
 
-But the clean Q/K/V vocabulary was not yet the main framing.
+But the clean Q/K/V vocabulary was not yet the main framing. Crucially, Bahdanau's model had no K/V distinction — the encoder hidden states were used for both matching and content retrieval. Separating K from V was the 2016 innovation.
 
 ## 3. 2014–2015: Memory Networks
 
@@ -241,9 +241,9 @@ If you ask “when were Q/K/V invented?”:
 
 The best one-line internalization is:
 
-> **Q/K/V is differentiable information retrieval: query the memory by similarity to keys, then read out a weighted blend of values.**
+> **Q/K/V is soft differentiable information retrieval: query the memory by similarity to keys, then read out a weighted blend of values.**
 
-[1]: https://arxiv.org/pdf/1706.03762?utm_source=chatgpt.com "Attention Is All You Need"
-[2]: https://arxiv.org/abs/1409.0473?utm_source=chatgpt.com "Neural Machine Translation by Jointly Learning to Align and Translate"
-[3]: https://arxiv.org/abs/1410.3916?utm_source=chatgpt.com "[1410.3916] Memory Networks - arXiv.org"
-[4]: https://arxiv.org/abs/1606.03126?utm_source=chatgpt.com "Key-Value Memory Networks for Directly Reading Documents"
+[1]: https://arxiv.org/pdf/1706.03762 "Attention Is All You Need"
+[2]: https://arxiv.org/abs/1409.0473 "Neural Machine Translation by Jointly Learning to Align and Translate"
+[3]: https://arxiv.org/abs/1410.3916 "[1410.3916] Memory Networks - arXiv.org"
+[4]: https://arxiv.org/abs/1606.03126 "Key-Value Memory Networks for Directly Reading Documents"

@@ -74,7 +74,7 @@ Readable, familiar, but slow for large numerical work.
 
 ## Level 2: Interpreted tensors
 
-Better mathematical abstraction, but still not necessarily fast.
+Tensors on the wrong device or called outside `defn` incur per-operation dispatch overhead and potential host↔device copies.
 
 ## Level 3: Compiled tensors
 
@@ -120,6 +120,8 @@ In ML, vectors often represent meaning:
 "math task"    → [2.1, 1.9, 0.4, ...]
 "writing task" → [-1.8, -2.2, 0.1, ...]
 ```
+
+These are illustrative; in practice the vector might represent a single token, a sentence, or an internal activation — the geometry is the same regardless of granularity.
 
 An embedding is a vector that stores a concept as coordinates.
 
@@ -200,7 +202,7 @@ For semantic similarity, direction often matters more than length. So we normali
 
 That means we project them onto a unit circle or unit sphere.
 
-After normalization, dot product becomes **cosine similarity**.
+When both vectors are normalized to unit length, their dot product equals their cosine similarity — the standard formula `(u·v)/(||u|| ||v||)` reduces to just `u·v`.
 
 Cosine similarity focuses on angle:
 
@@ -224,7 +226,7 @@ This is called **quasi-orthogonality**.
 
 That sounds abstract, but the intuition is simple:
 
-> High-dimensional space has room for many directions that barely interfere with each other.
+> In high dimensions, the volume of a hypersphere concentrates near its equatorial band relative to any reference direction. Any random vector is almost certainly near the equator of any other — i.e., near-perpendicular.
 
 This is one reason large models can store many concepts inside the same residual stream.
 
@@ -245,7 +247,7 @@ Because most directions are almost perpendicular, they can coexist without compl
 
 This leads into the later idea of **superposition**:
 
-> A neural network can pack many more useful features into a vector space than the raw number of dimensions might suggest.
+> A neural network can pack many more useful features into a vector space than the raw number of dimensions might suggest. Formally, superposition occurs when a model represents more features than it has dimensions by tolerating small interference between nearly-orthogonal feature directions.
 
 ---
 
@@ -317,8 +319,8 @@ You are ready for the next crash course when these words feel familiar:
 | Cosine similarity | Dot product after normalization                                  |
 | Embedding         | A learned vector representation of meaning                       |
 | Orthogonal        | Perpendicular; zero directional overlap                          |
-| Quasi-orthogonal  | Almost perpendicular, common in high dimensions                  |
-| Superposition     | Many features sharing one vector space with limited interference |
+| Quasi-orthogonal  | Almost perpendicular, common in high dimensions (dot product of two random unit vectors in D dimensions has std ≈ 1/√D) |
+| Superposition     | Many features sharing one vector space with limited interference, enabled by quasi-orthogonality; interference scales as 1/√D per additional feature |
 
 ---
 

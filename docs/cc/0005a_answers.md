@@ -166,8 +166,8 @@ That is huge.
 LoRA uses:
 
 ```text
-A = r × D
-B = D × r
+A has shape {r, D}
+B has shape {D, r}
 ```
 
 where `r` is much smaller than `D`.
@@ -200,7 +200,9 @@ Full update:
 LoRA update:
 
 ```text
-4096 × 8 + 8 × 4096 = 65,536 parameters
+A has shape {r=8, D=4096} = 32,768 parameters
+B has shape {D=4096, r=8} = 32,768 parameters
+Total = 65,536 parameters
 ```
 
 Much cheaper.
@@ -217,4 +219,4 @@ It adds a small trainable adapter that nudges the model’s behavior in useful d
 
 So instead of replacing the model’s knowledge, LoRA lightly steers it.
 
-**Plain English:** LoRA is a cheap, low-rank steering patch for a large frozen model.
+**Plain English:** LoRA is a cheap, low-rank steering patch for a large frozen model. This works in practice because fine-tuning changes tend to be approximately low-rank — the gradient updates during task-specific training concentrate in a small subspace of the full parameter space.
