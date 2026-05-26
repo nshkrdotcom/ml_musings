@@ -78,6 +78,14 @@ This lesson addresses efficient model scaling using sparse parallel "expert" neu
 
 ---
 
+### 🏛️ Lesson 7: Capstone - The Mini-TRINITY Framework
+This capstone project compiles all foundational components developed in Lessons 1–6 into a stateful, governed execution loop substrate. It implements a closed-loop control write-path routing and executing intents with runtime coordinate warping for dynamic model escalation.
+
+*   **[14_mini_trinity.exs](file:///home/home/p/g/n/ml_musings/14_mini_trinity.exs)**: *The Mini-TRINITY Substrate*. Integrates JIT-compiled routing projections (`defn` + `stable_softmax`), diverse mock expert models, custom semantic verification sensors, and control-loop representation warping to adjust routing vectors on expert execution failures.
+
+---
+
+
 ## ⚡ Prerequisites & System Installation
 
 Ensure Erlang, Elixir, and the required CUDA drivers are installed on your Linux system.
@@ -129,6 +137,9 @@ XLA_TARGET=cuda12 elixir 11_rosenbrock_es.exs
 # Run Lesson 6 Mixture of Experts Router & Loss Curve
 XLA_TARGET=cuda12 elixir 12_moe_gating.exs
 XLA_TARGET=cuda12 elixir 13_loss_curve.exs
+
+# Run Lesson 7 Capstone Mini-TRINITY Framework
+XLA_TARGET=cuda12 elixir 14_mini_trinity.exs
 ```
 
 ### Running on CPU (Fallback)
@@ -136,7 +147,9 @@ If a CUDA GPU is not available, EXLA will automatically fall back to CPU compila
 
 ```bash
 elixir 10_evolution_strategy.exs
+elixir 13_mini_trinity.exs
 ```
+
 
 ---
 

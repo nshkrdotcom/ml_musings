@@ -49,7 +49,9 @@ defmodule MlMusings.MixProject do
         11_rosenbrock_es.exs
         12_moe_gating.exs
         13_loss_curve.exs
+        14_mini_trinity.exs
         quasi_orthogonality.exs
+
         hoeffding_bound.exs
       ),
       licenses: ["MIT"],
