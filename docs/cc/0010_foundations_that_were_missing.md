@@ -52,6 +52,8 @@ vector × matrix = move/rotate/stretch/project the vector
 matrix × matrix = compose transformations
 ```
 
+Specifically, learners have seen `Nx.dot(x, W)` but need to be explicitly shown that stacking two such operations `W2(W1 x)` composes the transformations. Without nonlinearities, this composition collapses mathematically to a single linear map `(W2 W1)x`, which directly motivates why MLPs require nonlinearities to gain expressive power.
+
 Right now, we explain dot products and weights, but not enough of:
 
 > A neural layer is a learned coordinate transformation.
@@ -60,14 +62,12 @@ This foundation is important before going deeper into MLPs, attention blocks, Lo
 
 ## 2. Shapes and axes
 
-This is probably the biggest practical gap.
-
 A learner needs to become fluent with:
 
 ```text
 {batch, sequence, features}
 {tokens, hidden_dim}
-{heads, head_dim}
+{batch, heads, seq, head_dim}
 {experts, hidden_dim}
 ```
 
@@ -95,6 +95,8 @@ learning rate controls step size
 backprop applies chain rule through the computation graph
 ```
 
+Crucially, backprop is highly efficient because it reuses cached forward-pass activations (a dynamic programming approach), which is why training requires significantly more memory than inference.
+
 This matters because softmax collapse, linear probe training, LoRA training, and neural network learning all depend on gradient flow.
 
 Right now, gradients are more like “magic training signal” than a grounded mechanism.
@@ -114,10 +116,9 @@ different tasks use different losses
 Important losses:
 
 ```text
-MSE
+MSE (used for regression tasks or distillation, though not in our core scripts)
 binary cross entropy
-categorical cross entropy
-negative log likelihood
+categorical cross entropy / negative log likelihood (equivalent for one-hot targets; the distinction is log-softmax vs softmax+log)
 auxiliary load-balancing loss
 ```
 
@@ -125,16 +126,12 @@ This will matter before MoE, routing, and optimization.
 
 ## 5. Probability distributions
 
-Softmax was explained as “turn scores into percentages,” which is good. But the learner should also understand:
+Softmax was explained as “turn scores into percentages,” which is good. But the learner should also understand how these form a dependency and operations chain:
 
 ```text
-logits
-probabilities
-entropy
-confidence
-temperature
-sampling
-argmax
+logits → [temperature modification] → softmax → probabilities → [entropy / confidence]
+                                                     ↓
+                                             [sampling / argmax]
 ```
 
 This foundation becomes especially important for attention, token generation, MoE routing, expert collapse, and loss curves.
@@ -143,23 +140,30 @@ This foundation becomes especially important for attention, token generation, Mo
 
 We have taught self-attention in isolation, but not the full Transformer block.
 
-Missing pieces:
+The learner cannot yet answer:
 
-```text
-residual stream
-layer norm
-MLP/feed-forward layer
-attention head
-multi-head attention
-residual addition
-stacked layers
-```
+* Why do residual connections prevent gradient vanishing in deep networks?
+* What exactly does layer normalization normalize, and why is it placed before (Pre-LN) vs after (Post-LN) sublayers?
+* Why is the MLP expansion ratio typically 4×, and what does this capacity buy the model?
 
 The docs mention the residual stream conceptually, but the crash-course sequence has not yet made it operational. 
 
 This is important because attention alone is not “the Transformer.” It is one sublayer inside a larger residual architecture.
 
-## 7. Multi-head attention
+## 7. Autoregressive generation
+
+The curriculum has not yet explained how LLMs actually generate text:
+
+```text
+input prompt
+predict next token
+append sampled token
+repeat
+```
+
+Autoregressive generation is the only context in which the training objective (next-token prediction) makes sense. It contextualizes why the model is shaped the way it is. This is needed before KV cache, decoding bottlenecks, sampling, temperature, and memory-bandwidth lessons.
+
+## 8. Multi-head attention
 
 So far Q/K/V has been taught as one attention head.
 
@@ -173,6 +177,8 @@ one head tracks induction/copying patterns
 ...
 ```
 
+These are empirical findings from interpretability research, not architectural guarantees — heads can learn varied functions and the same function can be distributed across heads.
+
 A next lesson should eventually explain:
 
 ```text
@@ -181,7 +187,7 @@ hidden_dim = num_heads × head_dim
 
 and why multiple heads are not just parallel copies, but different learned relation detectors.
 
-## 8. Tokenization and embeddings
+## 9. Tokenization and embeddings
 
 We jumped into token vectors, but not enough into where they come from.
 
@@ -191,7 +197,7 @@ The learner should understand:
 text → tokens → token IDs → embedding vectors
 ```
 
-Without this, “The cat sat” becoming vectors feels like handwaving.
+Without this, “The cat sat” becoming vectors feels like handwaving. The toy scripts use 4-dimensional embeddings for readability; real models use 768–8192 dimensions, which is why the quasi-orthogonality and superposition properties from Lesson 1 are practically relevant rather than theoretical.
 
 A foundation lesson should explain:
 
@@ -203,7 +209,7 @@ positional information
 sequence length
 ```
 
-## 9. Positional encoding
+## 10. Positional encoding
 
 Self-attention alone has no built-in order.
 
@@ -232,7 +238,7 @@ why attention needs position
 
 Your later docs mention RoPE in the extended lesson material, but the core crash course has not reached it yet. 
 
-## 10. MLP layers and nonlinearities
+## 11. MLP layers and nonlinearities
 
 So far, almost everything is linear algebra plus softmax.
 
@@ -249,9 +255,9 @@ activation functions
 why stacked linear layers without nonlinearities collapse into one linear map
 ```
 
-This is crucial. Without nonlinearities, deep learning is just repeated matrix multiplication.
+Without nonlinearities, deep learning is just repeated matrix multiplication. Formally, repeated linear layers with no activation compose into a single linear layer `W_n ... W_2 W_1` via **linear collapse**, offering no more expressive power than a single layer. Establishing "linear collapse" as a parallel concept to softmax collapse and rank collapse aids in retaining why nonlinear activation functions are structurally required.
 
-## 11. Training vs inference
+## 12. Training vs inference
 
 The curriculum should explicitly distinguish:
 
@@ -264,43 +270,16 @@ LoRA = parameter-efficient fine-tuning
 
 This is partly implied, but it should be explicit.
 
-## 12. Autoregressive generation
+The curriculum covers the forward-pass geometry and optimization of individual components but does not yet give the learner a working mental model of how components compose into a training loop, how error signals flow backward, or how raw text enters the pipeline.
 
-The curriculum has not yet explained how LLMs actually generate text:
+# Inserted foundations
 
-```text
-input prompt
-predict next token
-append sampled token
-repeat
-```
+Four “foundation interludes” are located at their respective file paths to bridge these gaps before moving into MoE/evolution/runtime lessons:
 
-This is needed before KV cache, decoding bottlenecks, sampling, temperature, and memory-bandwidth lessons.
-
-# My verdict
-
-The curriculum is **strong but slightly front-loaded toward linear algebra and attention**, which is fine for your goal.
-
-I would grade it:
-
-```text
-Conceptual coherence:        A-
-Technical progression:       A-
-ML foundations coverage:     B+
-Systems/Elixir integration:  A
-Missing bridge concepts:     shapes, gradients, tokenization, full Transformer block
-```
-
-# Recommended insertions before continuing too far
-
-I would add four “foundation interludes” before MoE/evolution/runtime lessons:
-
-```text
-Foundation A: Shape Literacy
-Foundation B: Gradients, Loss, and Backprop
-Foundation C: Tokenization, Embeddings, and Positions
-Foundation D: The Full Transformer Block
-```
+* [Foundation A: Shape Literacy](file:///home/home/p/g/n/ml_musings/docs/cc/0020_shape_literacy.md)
+* [Foundation B: Gradients, Loss, and Backprop](file:///home/home/p/g/n/ml_musings/docs/cc/0021_gradients_loss_backprop.md)
+* [Foundation C: Tokenization, Embeddings, and Positions](file:///home/home/p/g/n/ml_musings/docs/cc/0022_tokenization_embeddings_positions.md)
+* [Foundation D: The Full Transformer Block](file:///home/home/p/g/n/ml_musings/docs/cc/0023_the_full_transformer_block.md)
 
 Then continue into:
 
@@ -327,7 +306,7 @@ gradients
 losses
 tokenization
 positional encoding
-nonlinearities
+nonlinearities (covered partially in Foundation D; no standalone foundation yet)
 full Transformer block structure
 training vs inference
 ```

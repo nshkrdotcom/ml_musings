@@ -40,6 +40,8 @@ gradient descent update
 repeat
 ```
 
+*(Note: In stateful frameworks like PyTorch, gradients accumulate by default and must be zeroed each step before the backward pass. In functional frameworks like Nx/JAX, `value_and_grad` returns fresh gradients each call with no accumulation — this is why the Nx scripts don't show a zero-grad step.)*
+
 The model does not “understand” it is wrong.
 
 It gets a number.
@@ -52,13 +54,7 @@ That number is the **loss**.
 
 A **loss function** turns model badness into one scalar number.
 
-Example:
-
-```text
-loss = 0.01  → very good
-loss = 0.50  → okay-ish
-loss = 8.00  → bad
-```
+Loss values are only meaningful relative to the task baseline. For binary cross-entropy, random guessing gives loss ≈ 0.693 (log 2); anything substantially lower means the model is learning. For vocabulary-scale cross-entropy, start ≈ log(vocab_size).
 
 The loss is the training target.
 
@@ -83,8 +79,10 @@ That is the brutally simple center of training.
 In the linear probe lesson, the model predicts:
 
 ```text
-z = x · w + b
+z = xw + b
 ```
+
+(Where `x: {N, D}`, `w: {D, 1}`, `b: scalar`, and `z: {N, 1}`)
 
 Then:
 
@@ -166,7 +164,7 @@ loss
 
 The slope tells you which way the loss is increasing.
 
-The gradient is that slope.
+The gradient is that slope. For a single parameter, the gradient is a scalar slope. For multiple parameters, the gradient is a vector — one slope per parameter. Moving opposite this vector means adjusting all parameters simultaneously in their respective downhill directions.
 
 If the gradient is positive:
 
@@ -187,7 +185,7 @@ So to reduce loss, move the parameter up.
 Core rule:
 
 ```text
-move opposite the gradient
+move opposite the gradient (which points uphill)
 ```
 
 ---
@@ -212,7 +210,7 @@ For bias:
 b_new = b_old - lr * grad_b
 ```
 
-The repo’s linear probe script does exactly this: it computes gradients for `w` and `b`, then subtracts `learning_rate * gradient` from each parameter. 
+The repo’s linear probe script does exactly this: it computes gradients for `w` and `b`, then subtracts `learning_rate * gradient` from each parameter. The gradient points uphill (in the direction of increasing loss). Subtracting it moves downhill.
 
 The learning rate controls step size.
 
@@ -276,6 +274,8 @@ w, b
 
 Backprop is just the chain rule applied efficiently.
 
+Without backprop, computing the gradient of loss with respect to every parameter would require one forward pass per parameter (using finite differences) — resulting in $O(P)$ forward passes for $P$ parameters. Backpropagation computes the gradients for all $P$ parameters in just one forward and one backward pass regardless of $P$. This is the core mathematical reason why backpropagation exists and enables scaling to billions of parameters.
+
 ---
 
 # 8. The chain rule intuition
@@ -317,8 +317,10 @@ input → prediction → loss
 Example:
 
 ```text
-x → sigmoid(x · w + b) → binary cross entropy
+x → sigmoid(xw + b) → binary cross entropy
 ```
+
+(Where `x: {N, D}`, `w: {D, 1}`, `b: scalar`, and product output is `{N, 1}`)
 
 ## Backward pass
 
@@ -334,6 +336,8 @@ Then gradient descent updates the parameters.
 w = w - lr * grad_w
 b = b - lr * grad_b
 ```
+
+*(Note: Backpropagation computes the gradients. Gradient descent (or Adam, AdamW, etc.) uses those gradients to update parameters. These are separate algorithms that happen to be used together in a full optimization step.)*
 
 Forward pass produces the mistake.
 Backward pass assigns responsibility.
@@ -380,7 +384,7 @@ So it gives both:
 
 ```text
 how bad are we?
-which direction should parameters move?
+the gradient direction (which must be negated to get the update direction)
 ```
 
 That is the training engine.
@@ -414,17 +418,13 @@ for every knob in the model:
   estimate which way to turn it
 ```
 
-Backprop does this efficiently.
+Storing these 7B gradient values requires as much memory as the model weights themselves — one reason training requires far more GPU memory than inference. Backprop does this efficiently.
 
 ---
 
 # 13. Why loss must be a scalar
 
-Training usually needs one final scalar loss:
-
-```text
-loss = 0.347
-```
+Autograd requires a scalar loss to compute parameter gradients. If the model produces a vector output, the loss function must reduce it to a scalar (e.g., by summing or averaging errors).
 
 Why?
 
@@ -507,7 +507,7 @@ So backprop receives almost no useful signal.
 
 In training language:
 
-> The gradient cannot flow backward through collapsed softmax.
+> The gradient doesn't vanish to exactly zero but becomes so small (sub-1e-8) that floating-point underflow makes it effectively zero for practical purposes (preventing it from flowing backward through collapsed softmax).
 
 That is why scaling attention scores matters.
 
@@ -572,7 +572,7 @@ weights stay fixed
 
 During inference, the model is just running forward.
 
-During training, the model runs forward and backward.
+During training, the model runs forward and backward. LoRA reduces training memory by reducing the number of parameters with nonzero gradients — if 99% of weights are frozen, 99% of gradient tensors never need to be allocated.
 
 ---
 
@@ -621,7 +621,7 @@ small step
 ...
 ```
 
-Each update changes the landscape slightly because the parameters changed.
+Each update changes the landscape slightly because the parameters changed. The gradient is only valid at the current parameter values. Each update makes it slightly outdated, which is why large learning rates cause instability — the model overshoots using a gradient that's already stale. This is why small learning rates are necessary (the gradient is only a local approximation of the landscape).
 
 Training is not one perfect move.
 
@@ -649,7 +649,7 @@ training takes forever
 ## Bad loss function
 
 ```text
-model optimizes the wrong behavior
+model optimizes the wrong behavior (Goodhart's Law / reward hacking). If the loss function doesn't perfectly capture the desired behavior, the model will optimize the loss metric while violating the intent — e.g., a model trained on cross-entropy alone may become overconfident without any calibration pressure.
 ```
 
 ## Dead gradients
@@ -710,7 +710,7 @@ Answer these before continuing:
 9. Why does softmax collapse hurt backprop?
 10. What is the difference between training and inference?
 11. Why does L2 regularization change the loss?
-12. Why is LoRA cheaper from a gradient perspective?
+12. Why is LoRA cheaper in both compute and memory compared to full fine-tuning? What specifically is not allocated?
 
 ---
 

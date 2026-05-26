@@ -95,6 +95,8 @@ axis 0 = rows
 axis 1 = columns
 ```
 
+*(Note: some frameworks use different axis conventions; Nx follows the mathematical convention where axis 0 is the outermost/slowest-varying dimension.)*
+
 Example:
 
 ```text
@@ -295,17 +297,17 @@ x contains 32 sequences, each with 128 tokens, each token represented by a 768-d
 Matrix multiplication has a contract:
 
 ```text
-{A, B} × {B, C} → {A, C}
+{m, k} × {k, n} → {m, n}
 ```
 
 The inner dimensions must match.
 
 ```text
-      {A, B}
+      {m, k}
           ↓
       must match
           ↑
-      {B, C}
+      {k, n}
 ```
 
 Example:
@@ -316,14 +318,7 @@ Example:
 
 Why?
 
-Because each output value is a dot product between:
-
-```text
-one row from the left matrix
-one column from the right matrix
-```
-
-So the row length and column length must match.
+Because the shared inner dimension `k` is summed over (contracted); the outer dimensions `m` and `n` survive. The word **contracted** is used to describe this summation — it represents the dimension that disappears.
 
 ---
 
@@ -376,6 +371,8 @@ Output:
 {3, 4}
 ```
 
+This is equivalent to standard matrix multiplication `x @ w_q` when contracting the inner dimensions; the explicit axis syntax makes the contraction visible.
+
 Meaning:
 
 ```text
@@ -386,12 +383,11 @@ Meaning:
 
 # 7. The survival rule
 
-When using `Nx.dot`, think:
+When using `Nx.dot`, remember:
 
-```text
-contracted axes disappear
-uncontracted axes survive
-```
+> **The Survival Rule:** Contracted axes disappear; uncontracted axes survive.
+>
+> **Corollary:** The output shape is formed by concatenating the surviving axes in the order they appear: the left tensor's survivors first, then the right tensor's survivors.
 
 Example:
 
@@ -525,6 +521,8 @@ Shape:
 {3, 3}
 ```
 
+Entry `scores[i,j]` = dot product of query vector `i` with key vector `j` = alignment score between token `i`'s question and token `j`'s advertisement.
+
 This is why QKᵀ produces a square matrix when the query and key sequence lengths are the same.
 
 ---
@@ -562,6 +560,8 @@ Output:
 ```text
 {seq=3, dim=4}
 ```
+
+`Output[i,:]` is a weighted sum of all value vectors, weighted by how much token `i` attended to each token.
 
 Meaning:
 
@@ -670,6 +670,8 @@ For 8,192 tokens:
 8,192 × 8,192 = 67,108,864 relationships
 ```
 
+At float32, one attention matrix for one head = 67M × 4 bytes ≈ 268MB. For 32 layers and batch size 1, that's ~8.6GB just in attention intermediates — which is why FlashAttention recomputes rather than materializes this matrix.
+
 This is why attention can be expensive.
 
 The shape itself tells you the cost.
@@ -774,7 +776,7 @@ Adding them works because the same bias can be applied to every row.
 {1000, 1} + {1, 1} → {1000, 1}
 ```
 
-Broadcasting is useful, but it can also hide mistakes.
+Broadcasting is useful, but it can also hide mistakes. For example, if `labels` has shape `{1000}` and `logits` has shape `{1000,1}`, adding them broadcasts to `{1000,1000}` — a silent correctness bug, not an error.
 
 So always ask:
 
@@ -817,6 +819,8 @@ Reconstruct:
 ```text
 {4,1} × {1,1} × {1,4}
 ```
+
+(Intermediate shapes: `{4,1} × {1,1} → {4,1}`; then `{4,1} × {1,4} → {4,4}`)
 
 First:
 
@@ -861,6 +865,8 @@ LoRA path:
 A shape: {r, D}
 Bᵀ shape: {r, D}
 ```
+
+*(Note: Here `Bᵀ` denotes the transpose of B; B itself has shape `{D,r}` in the Hu et al. convention. The scripts store this as `lora_b` with shape `{r,D}` — i.e., they store `Bᵀ` directly.)*
 
 Using the row-batched convention from the script:
 
@@ -993,6 +999,8 @@ X {batch, seq, hidden_dim}
 {batch, heads, seq, head_dim}
 ```
 
+*(Note: This split is a reshape + transpose: `hidden_dim = heads × head_dim`; the hidden dimension is partitioned into heads, then axes are rearranged so each head sees the full sequence.)*
+
 where:
 
 ```text
@@ -1023,7 +1031,7 @@ Answer these before continuing:
 6. Why does `QKᵀ` produce `{seq, seq}`?
 7. Why does `attention_weights × V` return `{seq, dim}`?
 8. What does broadcasting do?
-9. Why is `{seq, seq}` expensive for long sequences?
+9. Why is the `{seq,seq}` attention matrix expensive in both memory and compute for long sequences? What grows quadratically?
 10. Why are shapes semantic, not just mechanical?
 
 ---
