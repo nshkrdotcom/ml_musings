@@ -276,10 +276,10 @@ The curriculum covers the forward-pass geometry and optimization of individual c
 
 Four “foundation interludes” are located at their respective file paths to bridge these gaps before moving into MoE/evolution/runtime lessons:
 
-* [Foundation A: Shape Literacy](file:///home/home/p/g/n/ml_musings/docs/cc/0020_shape_literacy.md)
-* [Foundation B: Gradients, Loss, and Backprop](file:///home/home/p/g/n/ml_musings/docs/cc/0021_gradients_loss_backprop.md)
-* [Foundation C: Tokenization, Embeddings, and Positions](file:///home/home/p/g/n/ml_musings/docs/cc/0022_tokenization_embeddings_positions.md)
-* [Foundation D: The Full Transformer Block](file:///home/home/p/g/n/ml_musings/docs/cc/0023_the_full_transformer_block.md)
+* [Foundation A: Shape Literacy](0020_shape_literacy.md)
+* [Foundation B: Gradients, Loss, and Backprop](0021_gradients_loss_backprop.md)
+* [Foundation C: Tokenization, Embeddings, and Positions](0022_tokenization_embeddings_positions.md)
+* [Foundation D: The Full Transformer Block](0023_the_full_transformer_block.md)
 
 Then continue into:
 

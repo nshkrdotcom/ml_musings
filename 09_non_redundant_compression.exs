@@ -57,9 +57,9 @@ defmodule NonRedundantMatrixSurgery do
     mse = Nx.mean(Nx.pow(diff, 2)) |> Nx.to_number()
 
     # 2. Frobenius Norm (L2 Matrix Error). We pass `ord: :frobenius`
-    #    explicitly even though Nx 0.12.1's default for a 2-D matrix is
-    #    already Frobenius — being explicit guards against future Nx
-    #    versions or readers who only learn from this snippet.
+    #    explicitly (verified to be the correct keyword in Nx 0.12)
+    #    even though Nx's default for a 2-D matrix is already Frobenius —
+    #    being explicit guards against future Nx versions or readers who only learn from this snippet.
     l2_error = Nx.LinAlg.norm(diff, ord: :frobenius) |> Nx.to_number()
 
     {mse, l2_error}
@@ -137,8 +137,10 @@ IO.puts("Synthetic adapter delta = B · A  (B: {4,1}, A: {1,4}, rank-1 by constr
 IO.inspect(delta)
 
 {_u_d, s_d, _vt_d} = Nx.LinAlg.svd(delta)
+expected_s1 = :math.sqrt(Nx.to_number(Nx.sum(Nx.pow(b_factor, 2)))) * :math.sqrt(Nx.to_number(Nx.sum(Nx.pow(a_factor, 2))))
 IO.puts("\nSingular values of delta:")
 IO.inspect(s_d)
+IO.puts("  Expected S1 (||B|| × ||A||): #{Float.round(expected_s1, 4)}")
 IO.puts("""
 * Insight: only the FIRST singular value is materially non-zero. Every
   other singular value is numerical noise (≈ 1e-7 or smaller in f32).

@@ -161,7 +161,7 @@ then (using explicitly fictional placeholder IDs):
 [101, 202, 303]
 ```
 
-*(Note: These IDs are illustrative only. Under the actual GPT-2 tokenizer, the token IDs for `["The", " cat", " sat"]` are `[464, 3797, 3332]`.)*
+*(Note: These IDs are illustrative only. Under the actual GPT-2 tokenizer, the token IDs for `["The", " cat", " sat"]` are `[464, 3797, 3332]`. You can verify this by running the Python command: `import tiktoken; enc = tiktoken.get_encoding("gpt2"); print(enc.encode("The cat sat"))`.)*
 
 The exact numbers depend on the tokenizer.
 

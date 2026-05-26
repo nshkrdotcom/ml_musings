@@ -57,6 +57,9 @@ defmodule MoERouter do
 
     # Step 4: Calculate the fraction of tokens routed to each expert (f_i)
     # Create a one-hot encoding of the selected expert indices by broadcasting
+    # NOTE: In Nx 0.12, Nx.axis_size inside defn returns a tensor scalar. If XLA compilation fails
+    # due to non-static shapes in Nx.iota, hoist `num_experts` as a plain Elixir integer from outside defn:
+    # e.g., route_and_calculate_loss(x, w_g, num_experts)
     one_hot_selections = Nx.equal(
       Nx.reshape(selected_expert_indices, {num_tokens, 1}),
       Nx.iota({1, num_experts})
@@ -66,12 +69,11 @@ defmodule MoERouter do
     f_i = Nx.divide(Nx.sum(one_hot_selections, axes: [0]), num_tokens)
 
     # Step 5: Compute the Auxiliary Load Balancing Loss: L_aux = E * sum(f_i * P_i)
-    # We multiply `num_experts` by `1.0` to promote the integer constant to
-    # a float scalar at trace time. This avoids any type-promotion ambiguity
-    # downstream and keeps the result as f32 even on backends that are
-    # strict about mixed-type Nx.multiply.
+    # We explicitly cast num_experts to an f32 scalar tensor to avoid EXLA upcasting mixed float 
+    # literal multiplications to f64.
     dot_product = Nx.sum(Nx.multiply(f_i, p_i))
-    aux_loss = Nx.multiply(num_experts * 1.0, dot_product)
+    num_experts_f32 = Nx.as_type(num_experts, {:f, 32})
+    aux_loss = Nx.multiply(num_experts_f32, dot_product)
 
     {selected_expert_indices, f_i, p_i, aux_loss}
   end

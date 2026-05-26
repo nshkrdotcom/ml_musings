@@ -50,7 +50,7 @@ IO.puts("1. Running with Interpreted Binary Backend (Pure Elixir):")
 
 {time_binary, res_binary} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_host, b_host) end)
 IO.puts("   - Execution Time: #{time_binary} microseconds")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_binary[0..2]))} ... (#{Nx.size(res_binary)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_binary, [0], [3])))} ... (#{Nx.size(res_binary)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,9 @@ Nx.global_default_backend(EXLA.Backend)
 # not "transfer two ~400 KB tensors over PCIe and then compile."
 # Without this, the JIT timing would conflate compile cost and host->device
 # copy cost and the lesson's headline number would be misleading.
+#
+# Note: In Nx 0.12, backend_transfer/2 successfully produces a matching EXLA-backed
+# f32 tensor from a BinaryBackend f32 tensor, preserving its float type.
 a_device = Nx.backend_transfer(a_host, EXLA.Backend)
 b_device = Nx.backend_transfer(b_host, EXLA.Backend)
 
@@ -75,7 +78,7 @@ IO.puts("2. Running with EXLA Compiler (First Run - JIT Compilation):")
 # 'compute_square_add' function for the specific CPU instruction set and tensor shapes.
 {time_compile, res_compile} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_device, b_device) end)
 IO.puts("   - Execution Time: #{time_compile} microseconds (includes compiling code to machine instructions!)")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_compile[0..2]))} ... (#{Nx.size(res_compile)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_compile, [0], [3])))} ... (#{Nx.size(res_compile)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 # ---------------------------------------------------------------------------
@@ -87,7 +90,7 @@ IO.puts("3. Running with EXLA Compiler (Second Run - Compiled Direct Execution):
 # runs skip compilation entirely and execute native machine code directly at full hardware speed!
 {time_compiled, res_exla} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_device, b_device) end)
 IO.puts("   - Execution Time: #{time_compiled} microseconds")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_exla[0..2]))} ... (#{Nx.size(res_exla)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_exla, [0], [3])))} ... (#{Nx.size(res_exla)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 IO.puts("""

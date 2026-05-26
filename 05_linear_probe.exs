@@ -129,6 +129,7 @@ defmodule LinearProbe do
     max_loss = Enum.max(history)
     min_loss = Enum.min(history)
     loss_range = max_loss - min_loss
+    safe_range = max(loss_range, 1.0e-8)
 
     # Height of plot in lines, width in characters
     height = 12
@@ -163,7 +164,7 @@ defmodule LinearProbe do
       row_str =
         sampled
         |> Enum.map(fn val ->
-          row_bucket = round((val - min_loss) / (if loss_range == 0, do: 1.0, else: loss_range) * (height - 1))
+          row_bucket = round((val - min_loss) / safe_range * (height - 1))
           if row_bucket == row, do: "●", else: " "
         end)
         |> Enum.join("")
@@ -179,6 +180,7 @@ defmodule LinearProbe do
     label_step = div(width, 4)
     epoch_step = div(total_epochs, 4)
     
+    # label alignment assumes epoch numbers ≤ 3 digits; adjust label_step arithmetic for longer runs
     labels = 
       for i <- 0..4 do
         epoch_num = i * epoch_step
@@ -201,11 +203,7 @@ defmodule LinearProbe do
     # Generate Training dataset (Seed 42)
     {x_train, y_train} = SyntheticData.generate(1000, 42)
 
-    # [DEV] One-shot startup log of the backend the training tensors actually
-    # landed on. If this prints anything other than EXLA.Backend (e.g. because
-    # Nx.Random fell back to BinaryBackend on this Nx version), the per-epoch
-    # `update/6` will silently incur a host->device round-trip every call.
-    IO.puts("[DEV] x_train backend: #{inspect(x_train.data.__struct__)}")
+    # If SyntheticData.generate produces BinaryBackend tensors, update/6 will silently copy to device each call.
 
     # Generate Unseen Out-of-Sample Validation dataset (Seed 999 for Exercise 1)
     {x_val, y_val} = SyntheticData.generate(500, 999)

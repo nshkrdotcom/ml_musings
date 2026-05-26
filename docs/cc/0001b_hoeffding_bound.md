@@ -91,15 +91,17 @@ hoeffding_bound_prob = 2.0 * :math.exp(-dim * :math.pow(epsilon, 2) / 2.0)
 hoeffding_bound_pct = hoeffding_bound_prob * 100.0
 ```
 
-When you run `elixir hoeffding_bound.exs`, you get the following empirical profile:
+When you run `elixir hoeffding_bound.exs`, you get an empirical profile. Because the script seeds from wall-clock time, your exact empirical numbers will vary slightly on each run, but they will look approximately like the following:
+
+*Note: Running `hoeffding_bound.exs` will show values approximately like the following (exact numbers vary by random seed). Run the script to see your hardware's results.*
 
 | Dimension ($D$) | Empirical $\mathbb{P}(\|u \cdot v\| > 0.05)$ | Hoeffding Bound Limit | Status |
 |---|---|---|---|
-| **3** | $93.42\%$ | $199.25\%$ (loose) | **PASSED** ✅ |
-| **64** | $68.96\%$ | $184.58\%$ | **PASSED** ✅ |
-| **512** | $25.76\%$ | $105.46\%$ | **PASSED** ✅ |
-| **4096** | $0.10\%$ | $1.1952\%$ (tight) | **PASSED** ✅ |
-| **8192** | $0.00\%$ | $0.0071\%$ | **PASSED** ✅ |
+| **3** | $\approx 93\%$ | $199.25\%$ (loose) | **PASSED** ✅ |
+| **64** | $\approx 69\%$ | $184.58\%$ | **PASSED** ✅ |
+| **512** | $\approx 26\%$ | $105.46\%$ | **PASSED** ✅ |
+| **4096** | $\approx 0.10\%$ | $1.1952\%$ (tight) | **PASSED** ✅ |
+| **8192** | $\approx 0.00\%$ | $0.0071\%$ | **PASSED** ✅ |
 
 Notice the exponential transition! At $D=3$, random vectors are highly correlated. But by $D=8192$, it is **virtually impossible** for two random signals to have a dot product greater than $0.05$ by sheer chance.
 
@@ -127,8 +129,18 @@ Why is the Hoeffding upper bound at $D=3$ reported as $199.25\%$? How does a pro
 ### Question 2: The Epsilon Sensitivity
 If you tighten your quasi-orthogonality tolerance from $\epsilon=0.05$ to $\epsilon=0.01$ at $D=4096$, how does the Hoeffding upper bound change? Calculate the new limit.
 
+**Answer**: For $\epsilon=0.01$ at $D=4096$, the new limit is $2 \exp(-4096 \times 0.01^2 / 2) = 2 \exp(-0.2048) \approx 2 \times 0.8147 = 162.9\%$. Note: you may be surprised by this result — narrowing our similarity tolerance $\epsilon$ by $5\times$ makes the probability upper bound looser (from $1.195\%$ to $162.9\%$), rendering the bound mathematically trivial. This demonstrates that concentration bounds are highly sensitive to the scaling of $\epsilon^2$.
+
 ### Question 3: Systems Design
-You are designing an LLM router that dynamically selects one of $20$ specialized agent prompts using cosine similarity. If the routing vectors have $D=2048$, what similarity threshold should you set to guarantee that two vectors are mathematically aligned rather than randomly close?
+At $D=2048$, what similarity threshold $\epsilon$ would make the probability of random correlation (Hoeffding bound) fall below $0.01\%$? Show your calculation.
+
+**Answer**: We set the bound equal to $0.01\% = 0.0001$:
+$$2 \exp\left(-\frac{2048 \epsilon^2}{2}\right) \leq 0.0001$$
+$$\exp(-1024 \epsilon^2) \leq 0.00005$$
+$$-1024 \epsilon^2 \leq \ln(0.00005) \approx -9.9035$$
+$$\epsilon^2 \geq 0.00967$$
+$$\epsilon \geq 0.0983$$
+A similarity threshold of $\epsilon \approx 0.0983$ ensures the random overlap probability is less than $0.01\%$.
 
 ---
 

@@ -111,10 +111,9 @@ IO.puts(String.duplicate("-", 75))
 # would be timing a transfer of integer data and reporting it as if it were
 # the float pipeline's overhead).
 IO.write("2b. Transferring a 1M-element f32 host tensor to the EXLA device... ")
-host_float =
-  Nx.with_default_backend(Nx.BinaryBackend, fn ->
-    Nx.iota({size}) |> Nx.as_type({:f, 32})
-  end)
+# Copy an already-allocated device tensor to BinaryBackend, giving a valid host f32 tensor
+# to measure transfer cost without needing with_default_backend.
+host_float = Nx.backend_copy(tensor_a_device, Nx.BinaryBackend)
 
 {time_transfer, _} = :timer.tc(fn ->
   host_float
@@ -152,7 +151,8 @@ WHAT DID WE LEARN?
 
 3. NATIVE HARDWARE ACCELERATION (TEST 3):
    Look at Test 3. Once compiled and properly allocated on the device, the 
-   multiplication of 1,000,000 numbers runs in less than 2 ms!
+   multiplication of 1,000,000 numbers runs at blistering speeds
+   (typically sub-millisecond on GPU, single-digit ms on CPU — orders of magnitude faster than Test 1).
    That represents a massive 15x to 150x speedup compared to lists or interpreted tensors!
 
 KEY ML RULE: 

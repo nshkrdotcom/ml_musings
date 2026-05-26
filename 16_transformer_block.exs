@@ -88,8 +88,7 @@ defmodule TransformerBlock do
     v_heads = Nx.transpose(v_heads, axes: [0, 2, 1, 3]) # {batch, heads, seq, head_dim}
 
     # 3. Matchmaking alignment per head (Q @ K.T)
-    # contract along axis 3 (head_dim) of BOTH Q and K, batching over batch and head axes
-    # result shape: {batch, heads, seq, seq}
+    # Contracting head_dim axis (3) of both Q and K, batching over batch (0) and head (1) axes → {batch, heads, seq, seq}
     raw_scores = Nx.dot(q_heads, [3], [0, 1], k_heads, [3], [0, 1])
 
     # 4. Scale
@@ -104,14 +103,14 @@ defmodule TransformerBlock do
     causal_mask = Nx.select(mask_condition, -1.0e9, 0.0) # {seq, seq}
     
     # Broadcast causal mask across batch and head axes
+    # causal_mask shape {seq, seq} broadcasts over {batch, heads, seq, seq} via right-aligned broadcasting
     masked_scores = Nx.add(scaled_scores, causal_mask)
 
     # 6. Softmax
     attention_weights = stable_softmax(masked_scores) # {batch, heads, seq, seq}
 
     # 7. Value blending per head
-    # contract axis 3 (seq) of attention_weights with axis 2 (seq) of v_heads, batching over batch and head axes
-    # result shape: {batch, heads, seq, head_dim}
+    # Contracting seq axis (3) of attention_weights and seq axis (2) of v_heads, batching over batch (0) and head (1) axes → {batch, heads, seq, head_dim}
     attn_out_heads = Nx.dot(attention_weights, [3], [0, 1], v_heads, [2], [0, 1])
 
     # 8. Recombine heads (Concatenate + Reshape)
@@ -197,6 +196,9 @@ w_gate = Nx.broadcast(0.5, {hidden_dim, mlp_dim})
 w_up   = Nx.broadcast(0.2, {hidden_dim, mlp_dim})
 w_down = Nx.broadcast(0.3, {mlp_dim, hidden_dim})
 
+# Assert that hidden_dim matches num_heads * head_dim
+if hidden_dim != 2 * 4, do: raise "hidden_dim #{hidden_dim} must equal num_heads (2) × head_dim (4)"
+
 # Run the compiled pre-norm forward pass
 {z, weights, norm_x1, y, norm_y1, mlp_out} =
   TransformerBlock.block_forward(
@@ -233,6 +235,7 @@ IO.puts("Token Vector L2 Magnitudes BEFORE Normalization:")
 IO.inspect(x_magnitudes)
 IO.puts("Token Vector L2 Magnitudes AFTER Normalization (stabilized to zero-mean/unit-std):")
 IO.inspect(norm_magnitudes)
+IO.puts("  * Expected post-norm L2 magnitude ≈ √hidden_dim = #{Float.round(:math.sqrt(hidden_dim * 1.0), 3)}")
 IO.puts("  * Notice how normalization standardizes the activation variance of every token,")
 IO.puts("    preventing activation values from growing or shrinking uncontrollably with depth.\n")
 

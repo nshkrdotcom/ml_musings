@@ -45,6 +45,11 @@ defmodule AutoregressiveLM do
     # Gather the probability of the actual target token for each position
     indices = Nx.stack([Nx.iota({Nx.axis_size(targets, 0)}), targets], axis: 1)
     target_probs = Nx.gather(probs, indices)
+    # NOTE: If Nx.gather in Nx 0.12 doesn't support this index-gather form, you can fallback to:
+    # seq_len = Nx.axis_size(targets, 0)
+    # vocab_size = Nx.axis_size(logits, 1)
+    # one_hot = Nx.equal(Nx.iota({1, vocab_size}), Nx.reshape(targets, {seq_len, 1}))
+    # target_probs = Nx.sum(Nx.multiply(probs, one_hot), axes: [1])
     
     # Compute negative log-likelihood (NLL)
     # Avoid log(0.0) with a small epsilon
@@ -168,6 +173,7 @@ w_v = Nx.broadcast(0.8, {hidden_dim, hidden_dim})
 
 # Output projection mapping hidden_dim -> vocab_size
 # Shape: {hidden_dim, vocab_size} = {8, 20}
+# NOTE: In weight-tied LMs, w_vocab = embedding_table^T; here they are independent for clarity.
 w_vocab = Nx.tensor([
   [ 0.1,  0.8,  0.3, -0.1,  0.4,  0.2,  0.5,  0.1, -0.2,  0.3,  0.1,  0.6,  0.2,  0.3,  0.4, -0.3,  0.8,  0.1, -0.1, -0.9],
   [ 0.0,  0.2,  0.9,  0.6, -0.1,  0.4,  0.7,  0.2,  0.1, -0.2,  0.3,  0.1,  0.8,  0.5,  0.2,  0.1,  0.2,  0.3,  0.4, -0.8],
@@ -212,7 +218,7 @@ final_sequence = Enum.reduce(1..3, token_ids, fn step, current_ids ->
   # Step E: Predict and Sample Next Token
   # In autoregressive generation, we only look at the logits of the LAST token
   # because causal masking ensures earlier logits cannot see future context.
-  last_token_logits = logits[seq_len - 1] # shape: {vocab_size}
+  last_token_logits = logits[seq_len - 1] # shape: {vocab_size} — the last token's distribution over the full vocabulary
   
   # Sample with Temperature = 1.0 (Greedy argmax in our compiled function for stability)
   {_probs, next_id} = AutoregressiveLM.sample_token(last_token_logits, Nx.tensor(1.0))
@@ -237,6 +243,7 @@ final_sequence = Enum.reduce(1..3, token_ids, fn step, current_ids ->
   end
 
   # Append new token ID to sequence
+  # NOTE: O(N) list append; production systems use circular buffers or tensor concatenation.
   current_ids ++ [next_id_scalar]
 end)
 

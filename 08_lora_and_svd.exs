@@ -59,7 +59,7 @@ defmodule MatrixSurgery do
       empty = bar_width - filled
       bar = String.duplicate("█", filled) <> String.duplicate("░", empty)
       
-      label = :io_lib.format("  S~w (~.3f): [~s] (~.1f%)", [idx + 1, val, bar, percentage]) |> List.to_string()
+      label = :io_lib.format("  S~B (~.3f): [~s] (~.1f%)", [idx + 1, val, bar, percentage]) |> List.to_string()
       IO.puts(label)
     end)
     
@@ -68,7 +68,7 @@ defmodule MatrixSurgery do
     Enum.reduce(Enum.with_index(s_list), 0.0, fn {val, idx}, acc_var ->
       perc = (val / sum_s) * 100.0
       new_acc = acc_var + perc
-      label = :io_lib.format("  Rank ~w Approximation: ~.2f%", [idx + 1, new_acc]) |> List.to_string()
+      label = :io_lib.format("  Rank ~B Approximation: ~.2f%", [idx + 1, new_acc]) |> List.to_string()
       IO.puts(label)
       new_acc
     end)
@@ -140,6 +140,7 @@ IO.puts(String.duplicate("=", 75))
 IO.puts("1. SVD ANALYSIS & COMPRESSION DEMONSTRATION")
 {_reconstructed, singular_values} = MatrixSurgery.compress(w_noisy, 2)
 MatrixSurgery.print_decay_plot(singular_values)
+IO.puts("  * The elbow should appear after the first 1-2 components — S1 and S2 capture most variance, S3 and S4 are relatively small.")
 
 # 2. Demonstrate the LoRA Forward Pass
 x = Nx.tensor([[1.0, 1.0, 1.0, 1.0]])
@@ -175,7 +176,7 @@ target = Nx.tensor([
 # Save copy of w_0 so we can verify it remains completely unchanged
 w_0_frozen = w_0_redundant
 
-# Initialize adapter weights randomly (rank r = 1)
+# Initialize adapter weights (rank r = 1):
 lora_a = Nx.tensor([[0.1, -0.2, 0.1, 0.3]])
 lora_b = Nx.tensor([[-0.1, 0.4, -0.2, 0.1]])
 
@@ -196,6 +197,8 @@ end)
 IO.puts("\nTraining Complete! Final Loss: #{Float.round(final_loss, 6)}")
 
 # Verification check: base weights w_0 must be 100% untouched
+# NOTE: since Nx tensors are immutable values, this check always passes.
+# The real proof that W_0 is frozen is that value_and_grad differentiates only {lora_a, lora_b}, not w_0.
 w_0_diff = Nx.subtract(w_0_redundant, w_0_frozen)
 w_0_diff_magnitude = Nx.sqrt(Nx.sum(Nx.pow(w_0_diff, 2))) |> Nx.to_number()
 

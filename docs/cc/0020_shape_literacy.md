@@ -670,7 +670,7 @@ For 8,192 tokens:
 8,192 × 8,192 = 67,108,864 relationships
 ```
 
-At float32, one attention matrix for one head = 67M × 4 bytes ≈ 268MB. For 32 layers and batch size 1, that's ~8.6GB just in attention intermediates — which is why FlashAttention recomputes rather than materializes this matrix.
+At float32, one attention matrix for one head = 67M × 4 bytes ≈ 268MB. For 32 layers and batch size 1, that's ~8.4GB just in attention intermediates (since 32 × 268MB = 8,576MB ≈ 8.4GB) — which is why FlashAttention recomputes rather than materializes this matrix.
 
 This is why attention can be expensive.
 

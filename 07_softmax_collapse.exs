@@ -39,6 +39,8 @@ defmodule SoftmaxCollapse do
   # plain Elixir integers at trace time. Building `Nx.reshape(s_vec, {n, 1})`
   # with `n = Nx.size(s_vec)` is therefore a static-shape reshape, not a
   # dynamic-shape reshape. This was verified directly against Nx 0.12.1.
+  # Precondition: s must have statically known shape at defn trace time.
+  # Passing a runtime-dynamic tensor would fail at XLA compilation.
   defn softmax_jacobian(s) do
     # s is shape {1, N}. Squeeze to a 1-D vector of length N.
     s_vec = Nx.reshape(s, {Nx.size(s)})
@@ -196,7 +198,7 @@ IO.puts("1. COLLAPSED (UNSCALED) JACOBIAN:")
 IO.inspect(unscaled_jacobian)
 IO.puts("   - max |J[i,j]| = #{:erlang.float_to_binary(collapsed_max_abs, [decimals: 8])}")
 IO.puts("   - sum |J[i,j]| = #{:erlang.float_to_binary(collapsed_l1, [decimals: 8])}")
-IO.puts("   * Every entry is vanishingly small (sub-1e-3) relative to the scaled case below.")
+IO.puts("   * Every entry is near the f32 underflow floor (~1e-38), which registers as effectively zero gradient.")
 
 IO.puts("")
 IO.puts("2. SCALED JACOBIAN:")

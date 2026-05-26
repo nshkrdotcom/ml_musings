@@ -97,6 +97,9 @@ defmodule SelfAttention do
   # TRAINING STEP USING AUTO-DIFF / BACKPROPAGATION
   # Computes the gradient of the MSE loss between computed attention output
   # and a target coordinate matrix, then updates W_q, W_k, W_v.
+  #
+  # NOTE: If grad_w_k or grad_w_q prints as all-zeros, Nx.dot with axis-list contraction may
+  # lack grad support on this version; use Nx.matmul(queries, Nx.transpose(keys)) as a fallback.
   defn train_step(w_q, w_k, w_v, x, target_output, lr, head_dim) do
     {loss_val, {grad_w_q, grad_w_k, grad_w_v}} =
       value_and_grad({w_q, w_k, w_v}, fn {q, k, v} ->
@@ -172,16 +175,12 @@ IO.puts("     keeping standard deviation in check.")
 
 IO.puts("\n4. ATTENTION WEIGHTS (Softmax percentages):")
 IO.inspect(weights)
-IO.puts("   * Insight: Row 2 ('cat') distributes: 15.5% to 'The', 70.0% to itself,")
-IO.puts("     and 14.4% to 'sat'. Gradients remain highly alive!")
-
-# Invariant check: row sums of a softmax-along-last-axis matrix must be 1.0
-# for every row. Printing this lets a learner empirically VERIFY that we
-# implemented softmax correctly (i.e., the per-row attention budget is 100%).
-IO.puts("\n   * Sanity check — row sums of attention weights (should all be ~1.0):")
+IO.puts("  * Sanity check — each row should sum to 1.0 (the full attention budget):")
 weights
 |> Nx.sum(axes: [1])
 |> IO.inspect(label: "       row sums")
+IO.puts("   * Insight: Row 2 ('cat') distributes: 15.5% to 'The', 70.0% to itself,")
+IO.puts("     and 14.4% to 'sat'. Gradients remain highly alive!")
 
 IO.puts("\n5. FINAL OUTPUT (Information Extracted & Routed):")
 IO.inspect(output)
@@ -222,6 +221,11 @@ IO.puts("  - W_v Gradient (L2 Norm): #{Nx.sqrt(Nx.sum(Nx.pow(grad_w_v, 2))) |> N
   SelfAttention.train_step(new_w_q, new_w_k, new_w_v, x, target_output, lr, Nx.tensor(4.0))
 
 IO.puts("\nMSE Loss after 1 Gradient Descent step: #{Nx.to_number(loss_val_2) |> Float.round(6)}")
+if Nx.to_number(loss_val_2) < Nx.to_number(loss_val) do
+  IO.puts("  [VERIFIED] Loss decreased.")
+else
+  IO.puts("  [WARNING] Loss did not decrease — check initialization or learning rate.")
+end
 IO.puts("  * Notice that the loss successfully decreased! Backpropagation flowing")
 IO.puts("    through the Softmax and contraction operations allows us to optimize")
 IO.puts("    relational attention routing projection matrices directly.")

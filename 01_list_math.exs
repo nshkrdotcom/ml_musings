@@ -25,17 +25,14 @@ list_b = Enum.map(1..size, &(&1 * 1.0))
 IO.puts("Done!")
 
 IO.write("Running list multiplication on CPU... ")
-{time, result_sum} = :timer.tc(fn ->
-  # Multiply element-by-element. We immediately reduce the result with
-  # Enum.sum/1 so the timed block must (a) construct every product and
-  # (b) READ every product value (not just walk the cons-cell spine the
-  # way length/1 would). This is defence-in-depth against any future
-  # Elixir/BEAM optimization that might short-circuit the multiplication
-  # if the closure values were never observed.
-  result = Enum.zip_with(list_a, list_b, fn a, b -> a * b end)
-  Enum.sum(result)
+{time, result} = :timer.tc(fn ->
+  # Multiply element-by-element. We immediately return the resulting list
+  # so the timed block times the full materialization of the products.
+  Enum.zip_with(list_a, list_b, fn a, b -> a * b end)
 end)
+result_sum = Enum.sum(result)
 IO.puts("Done! (sum-of-products = #{result_sum})")
+IO.puts("  (verifying: first product = #{hd(result)}, last = #{List.last(result)})")
 
 IO.puts("\n" <> String.duplicate("-", 75))
 IO.puts("RESULT:")
@@ -51,14 +48,14 @@ WHY IS THIS TOO SLOW FOR MACHINE LEARNING?
    RAM, pointing to the next node.
 
    Approximate bytes touched per element on a 64-bit BEAM:
-     - list_a: ~8 bytes float payload + ~8 bytes next-cell pointer = ~16 B/elem
-     - list_b: another ~16 B/elem
-     - result: another ~16 B/elem
+     - list_a: ~16 bytes cons-cell overhead (head + tail pointers) + ~16 bytes boxed float payload = ~32 B/elem
+     - list_b: another ~32 B/elem
+     - result: another ~32 B/elem
    Compared to a Float32 Nx tensor of size N: just 4*N bytes laid out
    contiguously. For N = 1,000,000 floats the list pipeline can easily
-   touch ~48 MB of scattered memory, vs. ~4 MB contiguous for the tensor
-   path. That's why the cache misses we describe below are not a small
-   tax — they dominate runtime.
+   touch ~96 MB of scattered memory (cons-cells + boxed float overhead),
+   vs. ~4 MB contiguous for the tensor path. That's why the cache misses
+   we describe below are not a small tax — they dominate runtime.
 
 2. POINTER CHASING OVERHEAD:
    To perform list_a * list_b, the CPU cannot load all data at once. It must:

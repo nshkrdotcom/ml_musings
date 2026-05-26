@@ -41,9 +41,10 @@ defmodule SphereOptimizer do
 
   # GPU-Compiled Gradient Descent step using value_and_grad
   defn gd_step(coords, noise_key, lr) do
-    {loss_val, {grad, _grad_key}} = value_and_grad({coords, noise_key}, fn {c, k} ->
+    {loss_val, grad} = value_and_grad(coords, fn c ->
       c_reshaped = Nx.reshape(c, {1, 2})
-      loss_arr = NoisyObjective.evaluate(c_reshaped, k)
+      loss_arr = NoisyObjective.evaluate(c_reshaped, noise_key)
+      # Nx.reshape(loss_arr, {}) because evaluate returns {1} for a single-example batch; scalar required by value_and_grad.
       Nx.reshape(loss_arr, {})
     end)
 
@@ -86,7 +87,8 @@ defmodule SphereOptimizer do
       best_es_loss = losses[hd(best_indices)] |> Nx.to_number()
 
       # --- 2. GRADIENT DESCENT STEP ---
-      # GD uses the exact same noise key to ensure perfectly fair comparisons
+      # Both see the same noise seed per generation, but GD evaluates one point while
+      # ES evaluates a population — the comparison illustrates algorithmic difference, not equivalent compute.
       {new_gd, gd_loss_val} = gd_step(current_gd, noise_key, lr)
       gd_loss = Nx.to_number(gd_loss_val)
 

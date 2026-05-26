@@ -77,6 +77,7 @@ defmodule EmbeddingMath do
     i = Nx.reshape(Nx.iota({half_dim}), {1, half_dim})
     
     # divisor = 10000 ^ (2i / d_model)
+    # hidden_dim is an integer keyword arg; Nx.as_type wraps it as a scalar tensor for the division.
     power = Nx.divide(Nx.multiply(2.0, i), Nx.as_type(hidden_dim, {:f, 32}))
     divisor = Nx.pow(10000.0, power)
     
@@ -135,6 +136,8 @@ IO.puts(String.duplicate("=", 75))
 # 1. TOY VOCABULARY AND ENCODING
 prompt = "The cat sat on the mat"
 token_ids = Tokenizer.encode(prompt)
+# Assert encoded IDs are correct to sanity-check vocabulary alignment
+if token_ids != [1, 2, 3, 4, 16, 5], do: raise "Encoded IDs mismatch! Got: #{inspect(token_ids)}"
 
 IO.puts("STEP 1: TOY VOCABULARY AND PREPROCESSING")
 IO.puts("  - Input Raw Sentence: \"#{prompt}\"")
@@ -149,11 +152,10 @@ vocab_size = length(Tokenizer.toy_vocabulary())
 ids_tensor = Nx.tensor(token_ids) # shape {seq_len=6}
 
 # Construct deterministic Embedding Table (vocab_size x hidden_dim = 20 x 6)
-# Each word gets a distinct, frozen coordinates row
-embedding_table = Nx.broadcast(0.0, {vocab_size, hidden_dim})
-# Populate with unique values
-indices = Nx.iota({vocab_size, 1})
-embedding_table = Nx.add(embedding_table, Nx.multiply(indices, 0.1))
+# Each word gets a distinct, frozen coordinates row.
+# We use sin(iota) to keep magnitudes balanced and avoid any single token dominating.
+indices = Nx.iota({vocab_size, hidden_dim})
+embedding_table = Nx.sin(indices) |> Nx.multiply(0.5)
 
 # Take vectors corresponding to our sequence
 token_embeds = Nx.take(embedding_table, ids_tensor) # shape: {seq_len, hidden_dim}
@@ -181,10 +183,11 @@ IO.inspect(pe_sinusoidal)
 IO.puts("  - Learned PE Slice Shape:        #{inspect(Nx.shape(pe_learned))}\n")
 
 # 4. INHERENT PERMUTATION-EQUIVARIANCE OF RAW ATTENTION
-# Let's define simple projection matrices
-w_q = Nx.broadcast(0.5, {hidden_dim, hidden_dim})
-w_k = Nx.broadcast(0.2, {hidden_dim, hidden_dim})
-w_v = Nx.broadcast(0.8, {hidden_dim, hidden_dim})
+# Construct non-uniform projection matrices to avoid degenerate attention where all projections align perfectly.
+# We scale the iota coordinates to create non-trivial directions.
+w_q = Nx.reshape(Nx.iota({hidden_dim, hidden_dim}), {hidden_dim, hidden_dim}) |> Nx.multiply(0.05)
+w_k = Nx.reshape(Nx.iota({hidden_dim, hidden_dim}), {hidden_dim, hidden_dim}) |> Nx.multiply(0.03)
+w_v = Nx.reshape(Nx.iota({hidden_dim, hidden_dim}), {hidden_dim, hidden_dim}) |> Nx.multiply(0.07)
 head_dim = Nx.tensor(hidden_dim * 1.0)
 
 # Compute raw attention output without position embeddings
@@ -229,7 +232,8 @@ x_permuted_with_pos = Nx.add(x_permuted, pe_sinusoidal)
 
 # Check if permutation equivariance is now broken
 diff_swap_pos = Nx.subtract(out_permuted_pos[1], out_raw[2])
-_l2_diff_pos = Nx.sqrt(Nx.sum(Nx.pow(diff_swap_pos, 2))) |> Nx.to_number()
+l2_diff_pos = Nx.sqrt(Nx.sum(Nx.pow(diff_swap_pos, 2))) |> Nx.to_number()
+IO.puts("  - L2 Difference between out_permuted_pos[\"sat\"] (pos 1) and out_raw[\"sat\"] (pos 2): #{Float.round(l2_diff_pos, 4)}")
 
 # Check actual L2 difference between out_permuted_pos[1] and out_pos[2]
 # If permutation-equivariance is broken, the vector at index 1 of the permuted output

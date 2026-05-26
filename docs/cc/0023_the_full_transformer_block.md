@@ -360,12 +360,12 @@ Shape story for one head:
 ```text
 X:                 {seq, hidden_dim}
 Q, K, V:            {seq, head_dim}
-
-*(Note: The projection matrices for one head have shape `{hidden_dim, head_dim}`, compressing the full hidden dimension down to the per-head dimension: `{seq, hidden_dim} × {hidden_dim, head_dim} → {seq, head_dim}`.)*
 attention scores:   {seq, seq}
 attention weights:  {seq, seq}
 attention output:   {seq, head_dim}
 ```
+
+*(Note: The projection matrices for one head have shape `{hidden_dim, head_dim}`, compressing the full hidden dimension down to the per-head dimension: `{seq, hidden_dim} × {hidden_dim, head_dim} → {seq, head_dim}`.)*
 
 For multi-head attention, this happens in parallel across heads.
 
@@ -1075,12 +1075,14 @@ def transformer_block(x):
 Causal self-attention:
 
 ```text
+# Pseudocode (Python-style notation): @ denotes matrix multiply, .T denotes transpose.
+# See 06_self_attention.exs for Elixir/Nx equivalent.
 def causal_self_attention(x):
     q = x @ Wq
     k = x @ Wk
     v = x @ Wv
 
-    scores = (q @ k.T) / sqrt(head_dim)
+    scores = (q @ k.T) / sqrt(head_dim) # Nx equivalent: Nx.dot(q, [1], k, [1])
     scores = apply_causal_mask(scores)
 
     weights = softmax(scores)

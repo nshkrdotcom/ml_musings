@@ -19,6 +19,13 @@ defmodule Geometry do
   helpers into a batched model must pass `axes: [-1]` (or equivalent) to
   `Nx.sum/2` and `Nx.pow/2` reductions; otherwise the math will silently
   reduce across the batch axis and produce wrong cosine similarities.
+
+  # Batched version (x: {N, D}) — NOT used in this lesson:
+  # defn cosine_similarity_batched(u, v) do
+  #   u_norm = Nx.divide(u, Nx.max(Nx.sqrt(Nx.sum(Nx.pow(u, 2), axes: [-1], keep_axes: true)), 1.0e-10))
+  #   v_norm = Nx.divide(v, Nx.max(Nx.sqrt(Nx.sum(Nx.pow(v, 2), axes: [-1], keep_axes: true)), 1.0e-10))
+  #   Nx.sum(Nx.multiply(u_norm, v_norm), axes: [-1])
+  # end
   """
 
   import Nx.Defn
@@ -82,7 +89,7 @@ IO.puts("   Result    : POSITIVE (~0.707 - Highly correlated direction)")
 IO.puts("")
 IO.puts("3. UP vs. UP (0° Angle):")
 IO.puts("   Similarity: #{sim3}")
-IO.puts("   Result    : EXACTLY 1.0 (Identical direction / Complete correlation)")
+IO.puts("   Result    : Very close to 1.0 (floating-point rounding from normalization)")
 IO.puts(String.duplicate("-", 75))
 
 IO.puts("""
