@@ -34,13 +34,7 @@ Your existing lesson docs already gesture toward positional mechanisms like RoPE
 
 # 1. The problem: neural nets do not read text
 
-A neural network does not directly understand:
-
-```text
-"The cat sat"
-```
-
-It understands numbers.
+A neural network performs mathematical operations on real-valued vectors. Raw text has no natural vector representation, so it must first be converted to numbers through a fixed preprocessing pipeline.
 
 So the first problem is:
 
@@ -95,7 +89,7 @@ might become:
 ["un", "believ", "able"]
 ```
 
-The model does not necessarily use whole words.
+The exact split depends on the tokenizer's vocabulary and merge rules; always verify with the specific tokenizer being used. The model does not necessarily use whole words.
 
 Modern LLMs usually use **subword tokens**.
 
@@ -137,6 +131,8 @@ code
 multiple languages
 ```
 
+Subword tokenization reuses common character sequences as shared vocabulary entries. A new word like 'GPT-4o' can be decomposed into known subwords even if the full string was never seen during tokenizer training, avoiding the out-of-vocabulary problem.
+
 So tokenization is a compromise:
 
 > break text into reusable chunks that are smaller than full words but larger than characters.
@@ -159,11 +155,13 @@ could become:
 ["The", " cat", " sat"]
 ```
 
-then:
+then (using explicitly fictional placeholder IDs):
 
 ```text
-[791, 8415, 10139]
+[101, 202, 303]
 ```
+
+*(Note: These IDs are illustrative only. Under the actual GPT-2 tokenizer, the token IDs for `["The", " cat", " sat"]` are `[464, 3797, 3332]`.)*
 
 The exact numbers depend on the tokenizer.
 
@@ -200,6 +198,8 @@ The vocabulary is like a giant dictionary:
 token string ↔ token ID
 ```
 
+The vocabulary is fixed when the tokenizer is trained. Adding new tokens to a deployed model requires either retraining the tokenizer or using a fallback (like splitting into known subwords), which is why specialized domains (medical, legal, code) often have performance gaps with general-purpose tokenizers.
+
 During preprocessing:
 
 ```text
@@ -231,15 +231,10 @@ embedding_table shape: {vocab_size, hidden_dim}
 Example:
 
 ```text
-{50,000, 768}
+{vocab_size, hidden_dim}
 ```
 
-Meaning:
-
-```text
-50,000 possible tokens
-768 numbers per token vector
-```
+For example, GPT-2 uses a vocabulary of ~50,257 tokens; modern models range from 32,000 (Llama-2) to 128,000+ (Llama-3, GPT-4). A typical embedding table might be `{vocab_size, hidden_dim}` = `{32000, 4096}` for Llama-2-7B.
 
 Each row is the learned vector for one token.
 
@@ -296,7 +291,7 @@ fur
 meow
 ```
 
-because those tokens appear in related contexts during training.
+The embedding vectors are learned jointly with all other model parameters to minimize next-token prediction loss. Geometric proximity between embeddings emerges as a byproduct — similar tokens tend to appear in similar contexts and develop similar embeddings, but this is a consequence of training, not a design constraint.
 
 The embedding table is the first learned representation layer.
 
@@ -312,7 +307,7 @@ Suppose we tokenize:
 
 into 3 tokens.
 
-Each token gets a vector of size 4 in the toy scripts.
+Each token gets a vector of size 4 in the toy scripts. In real models this dimension is 768 (BERT-base), 4096 (Llama-2-7B), or 8192 (Llama-2-70B). The mathematical operations are identical regardless of dimension; only the scale changes.
 
 Then:
 
@@ -361,7 +356,7 @@ Without position information, these contain the same tokens:
 
 The token set is similar, but the meaning is different.
 
-Order matters.
+Order matters. Pure self-attention is permutation-equivariant: swapping two tokens' positions produces the same output vectors in swapped positions. Positional information breaks this symmetry.
 
 So the model needs some way to know:
 
@@ -406,6 +401,8 @@ which token came after?
 how far away is it?
 ```
 
+Different positional encoding schemes make different information available: absolute embeddings encode "what slot am I in"; relative encodings (like RoPE) encode "how far apart are these two tokens." The choice affects how well the model generalizes to sequence lengths not seen in training.
+
 Language depends heavily on order.
 
 Examples:
@@ -433,7 +430,7 @@ position 1 → vector
 position 2 → vector
 ```
 
-Then add it to the token embedding:
+Then add it to the token embedding (with the shape contract `token_embedding: {seq, hidden_dim}` + `position_embedding: {seq, hidden_dim}` → `{seq, hidden_dim}`):
 
 ```text
 input_vector = token_embedding + position_embedding
@@ -537,6 +534,8 @@ Weakness:
 may generalize poorly beyond trained context length
 ```
 
+The model has no learned representation for position 513 if it was only trained on sequences up to 512 tokens; inference on longer sequences produces undefined behavior — typically degraded perplexity or incoherent output.
+
 ## Fixed sinusoidal positions
 
 The original Transformer used sinusoidal position encodings.
@@ -571,7 +570,7 @@ Simple intuition:
 position changes the angle of Q and K vectors
 ```
 
-So relative positions become visible through dot products.
+The key property: after applying RoPE, the dot product `Q_i · K_j` depends only on their relative distance `i − j`, not their absolute positions. This means the model can generalize to longer sequences more naturally than absolute position embeddings. So relative positions become visible through dot products.
 
 RoPE is elegant because it helps attention understand relative distance:
 
@@ -585,7 +584,7 @@ The position is baked into how Q and K align.
 
 ---
 
-# 15. Why RoPE affects Q and K, not usually V
+# 15. Why RoPE affects Q and K, by design, only V is not rotated
 
 Attention matching happens through:
 
@@ -603,7 +602,7 @@ should this query attend to that key, given their positions?
 
 The Value is the content being retrieved.
 
-So RoPE usually modifies the matching vectors:
+So RoPE by design, only modifies the matching vectors:
 
 ```text
 Q and K
@@ -614,6 +613,8 @@ not the payload vectors:
 ```text
 V
 ```
+
+The theoretical reason is exact: the attention weight `softmax(QKᵀ/√d)` is where positional relationships must be encoded for the model to use them; V receives these weights as scalars and doesn't need positional rotation.
 
 This ties directly back to Q/K/V:
 
@@ -656,11 +657,11 @@ The model needs:
 
 ```text
 dog = token identity
-position 0 = subject-like location
+position 0 = first token position
 bites = token identity
-position 1 = verb-like location
+position 1 = second token position
 man = token identity
-position 2 = object-like location
+position 2 = third token position
 ```
 
 Without positions, it cannot reliably distinguish:
@@ -709,7 +710,7 @@ During training, the embedding table receives gradients like other parameters.
 
 If a token appears in a batch, its embedding row participates in the forward pass.
 
-Then backprop updates that row to reduce loss.
+Then backprop updates that row to reduce loss. In practice, embedding rows for tokens *not* in the current batch receive zero gradient and are not updated. Tokens that appear rarely in training data receive few gradient updates and may have poorly trained embeddings — a practical reason why very rare tokens and OOV subwords can degrade model performance.
 
 So the embedding for `"cat"` changes over training because the model repeatedly learns:
 
@@ -740,6 +741,8 @@ or batched:
 ```text
 {batch, vocab_size}
 ```
+
+Many models use *weight tying*: the output projection matrix `W_vocab` is shared with (transposed from) the input embedding table. This means the same vector space is used for both input representation and output prediction — a token's embedding and its output logit direction are coupled.
 
 Each logit is a score for one possible next token.
 
@@ -802,7 +805,7 @@ Then:
 
 and so on.
 
-This is called **autoregressive generation**.
+This is called **autoregressive generation**. Each generation step re-processes the entire sequence, recomputing Q, K, V for all previous tokens. The KV cache (covered later) avoids this by storing previously computed K and V tensors.
 
 We will return to this later, but tokenization and embeddings are the entry point.
 
@@ -831,7 +834,7 @@ Example:
 
 could be one token in one tokenizer, several tokens in another.
 
-A word split into many tokens costs more context and may be harder for the model to handle cleanly.
+A word split into many tokens costs more context and may be harder for the model to handle cleanly. Multi-token words require the model to maintain coherent representations across several attention steps before the full word concept is assembled — contrast with single-token words which can be processed as a unit in one step.
 
 So tokenization is part of model behavior, not just preprocessing.
 
@@ -853,9 +856,7 @@ or:
 100 tokens ≈ 75 words
 ```
 
-But this varies.
-
-Code, math, JSON, and unusual names may tokenize differently.
+But this varies. These ratios are for typical English prose with GPT-2-family tokenizers. Code, mathematical notation, and non-Latin scripts tokenize very differently. For instance, code often generates more tokens per character due to whitespace handling, while non-English text like CJK languages may have fewer characters per token.
 
 This matters because model context windows are measured in tokens, not words.
 
@@ -910,7 +911,7 @@ then:
 token IDs: {seq=3}
 ```
 
-then embedding lookup:
+then embedding lookup (equivalent to `embedding_table[token_ids]` — indexing the embedding matrix by the token ID integers. Shape: `token_ids {seq=3}` indexes into `embedding_table {vocab_size, hidden_dim=4}` → output `{seq=3, hidden_dim=4}`):
 
 ```text
 token embeddings: {seq=3, hidden_dim=4}
@@ -1026,11 +1027,11 @@ Answer these before continuing:
 7. What does embedding lookup do?
 8. Why does attention need positional information?
 9. What is the difference between token identity and token position?
-10. What problem does RoPE solve?
+10. What specific property does RoPE have that learned absolute positional embeddings lack, and why does this matter for sequences longer than the training length?
 11. Why does RoPE affect Q and K more directly than V?
 12. What is autoregressive generation?
 13. Why does tokenization affect context length?
-14. What is the shape transition from token IDs to embeddings?
+14. What is the shape transition from token IDs to embeddings? What operation performs this transition, and what are the shapes of the inputs and outputs of that operation?
 
 ---
 

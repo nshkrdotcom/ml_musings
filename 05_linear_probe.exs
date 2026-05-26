@@ -124,6 +124,78 @@ defmodule LinearProbe do
     Nx.mean(Nx.as_type(matches, {:f, 32})) |> Nx.multiply(100.0)
   end
 
+  # Helper to print a beautiful 2D ASCII scatter plot of the descending training loss curve
+  def print_ascii_plot(history) do
+    max_loss = Enum.max(history)
+    min_loss = Enum.min(history)
+    loss_range = max_loss - min_loss
+
+    # Height of plot in lines, width in characters
+    height = 12
+    width = 50
+
+    # Resample history to exactly `width` points for clean plotting
+    chunk_size = max(1, div(length(history), width))
+    sampled = 
+      history
+      |> Enum.chunk_every(chunk_size)
+      |> Enum.map(& (Enum.sum(&1) / length(&1)))
+      |> Enum.take(width)
+
+    IO.puts("\nTRAINING LOSS CURVE (ASCII VISUALIZATION):")
+    IO.puts(String.duplicate("-", 75))
+    
+    # Loop from top row down to 0
+    Enum.each((height - 1)..0//-1, fn row ->
+      label = 
+        cond do
+          row == height - 1 ->
+            :io_lib.format("~.4f | ", [max_loss]) |> List.to_string()
+          row == div(height, 2) ->
+            mid_val = min_loss + 0.5 * loss_range
+            :io_lib.format("~.4f | ", [mid_val]) |> List.to_string()
+          row == 0 ->
+            :io_lib.format("~.4f | ", [min_loss]) |> List.to_string()
+          true ->
+            "       | "
+        end
+
+      row_str =
+        sampled
+        |> Enum.map(fn val ->
+          row_bucket = round((val - min_loss) / (if loss_range == 0, do: 1.0, else: loss_range) * (height - 1))
+          if row_bucket == row, do: "●", else: " "
+        end)
+        |> Enum.join("")
+
+      IO.puts(label <> row_str)
+    end)
+    
+    # Axis bottom
+    IO.puts("       +" <> String.duplicate("-", width))
+    
+    # Bottom labels for epochs
+    total_epochs = length(history)
+    label_step = div(width, 4)
+    epoch_step = div(total_epochs, 4)
+    
+    labels = 
+      for i <- 0..4 do
+        epoch_num = i * epoch_step
+        {inspect(epoch_num), i * label_step}
+      end
+
+    bottom_line =
+      Enum.reduce(labels, String.duplicate(" ", width + 10), fn {str, pos}, acc ->
+        start_idx = pos + 8
+        len = String.length(str)
+        String.slice(acc, 0, start_idx) <> str <> String.slice(acc, start_idx + len, String.length(acc))
+      end)
+      
+    IO.puts(bottom_line)
+    IO.puts(String.duplicate("-", 75))
+  end
+
   # Orchestrator Training & Validation Loop
   def run_curriculum(epochs, lr) do
     # Generate Training dataset (Seed 42)
@@ -133,7 +205,7 @@ defmodule LinearProbe do
     # landed on. If this prints anything other than EXLA.Backend (e.g. because
     # Nx.Random fell back to BinaryBackend on this Nx version), the per-epoch
     # `update/6` will silently incur a host->device round-trip every call.
-    IO.puts("[DEV] x_train backend: #{inspect(Nx.backend(x_train))}")
+    IO.puts("[DEV] x_train backend: #{inspect(x_train.data.__struct__)}")
 
     # Generate Unseen Out-of-Sample Validation dataset (Seed 999 for Exercise 1)
     {x_val, y_val} = SyntheticData.generate(500, 999)
@@ -151,18 +223,23 @@ defmodule LinearProbe do
     IO.puts("Initial Bias (Separating Line Offset):\n#{inspect(b_init)}")
     IO.puts(String.duplicate("=", 75))
 
-    # Perform gradient descent training loop
-    {final_w, final_b} = Enum.reduce(1..epochs, {w_init, b_init}, fn epoch, {current_w, current_b} ->
-      {next_w, next_b, loss_val} = update(current_w, current_b, x_train, y_train, lr, @lambda)
+    # Perform gradient descent training loop, collecting losses
+    {final_w, final_b, loss_history_rev} = 
+      Enum.reduce(1..epochs, {w_init, b_init, []}, fn epoch, {current_w, current_b, history} ->
+        {next_w, next_b, loss_val} = update(current_w, current_b, x_train, y_train, lr, @lambda)
+        loss_num = Nx.to_number(loss_val)
 
-      if rem(epoch, 20) == 0 do
-        # Evaluate validation accuracy at intermediate steps on device
-        val_acc = evaluate(next_w, next_b, x_val, y_val) |> Nx.to_number()
-        IO.puts("Epoch #{String.pad_leading("#{epoch}", 3)} | Training Loss: #{:erlang.float_to_binary(Nx.to_number(loss_val), [decimals: 5])} | Val Accuracy: #{:erlang.float_to_binary(val_acc, [decimals: 2])}%")
-      end
+        if rem(epoch, 20) == 0 do
+          # Evaluate validation accuracy at intermediate steps on device
+          val_acc = evaluate(next_w, next_b, x_val, y_val) |> Nx.to_number()
+          IO.puts("Epoch #{String.pad_leading("#{epoch}", 3)} | Training Loss: #{:erlang.float_to_binary(loss_num, [decimals: 5])} | Val Accuracy: #{:erlang.float_to_binary(val_acc, [decimals: 2])}%")
+        end
 
-      {next_w, next_b}
-    end)
+        {next_w, next_b, [loss_num | history]}
+      end)
+
+    loss_history = Enum.reverse(loss_history_rev)
+    print_ascii_plot(loss_history)
 
     IO.puts(String.duplicate("=", 75))
     IO.puts("TRAINING COMPLETE!")

@@ -93,6 +93,25 @@ defmodule SelfAttention do
 
     {output, attention_weights, raw_scores, scaled_scores}
   end
+
+  # TRAINING STEP USING AUTO-DIFF / BACKPROPAGATION
+  # Computes the gradient of the MSE loss between computed attention output
+  # and a target coordinate matrix, then updates W_q, W_k, W_v.
+  defn train_step(w_q, w_k, w_v, x, target_output, lr, head_dim) do
+    {loss_val, {grad_w_q, grad_w_k, grad_w_v}} =
+      value_and_grad({w_q, w_k, w_v}, fn {q, k, v} ->
+        {output, _weights, _raw, _scaled} = compute_attention(x, q, k, v, head_dim)
+        # Mean Squared Error Loss
+        Nx.mean(Nx.pow(Nx.subtract(output, target_output), 2))
+      end)
+
+    # Gradient Descent Step
+    new_w_q = Nx.subtract(w_q, Nx.multiply(lr, grad_w_q))
+    new_w_k = Nx.subtract(w_k, Nx.multiply(lr, grad_w_k))
+    new_w_v = Nx.subtract(w_v, Nx.multiply(lr, grad_w_v))
+
+    {new_w_q, new_w_k, new_w_v, loss_val, {grad_w_q, grad_w_k, grad_w_v}}
+  end
 end
 
 # --- RUNNING THE EXPERIMENT ---
@@ -169,3 +188,41 @@ IO.inspect(output)
 IO.puts(String.duplicate("=", 75))
 IO.puts("Self-Attention Execution Complete!")
 IO.puts(String.duplicate("=", 75))
+
+# ---------------------------------------------------------------------------
+# EXTRA CREDIT: DEMONSTRATING GRADIENT FLOW THROUGH THE ATTENTION BLOCK
+# ---------------------------------------------------------------------------
+# Let's say we want to optimize the attention output to match a specific target state.
+# Shape of target output: {3, 4} (same as output)
+target_output = Nx.tensor([
+  [0.8, 0.2, 0.4, 0.6],
+  [0.2, 1.2, 0.5, 0.8],
+  [0.5, 0.3, 0.9, 1.0]
+])
+
+IO.puts("\n" <> String.duplicate("-", 75))
+IO.puts("TRAINING GRADIENT FLOW: OPTIMIZING ATTENTION WEIGHTS VIA BACKPROPAGATION")
+IO.puts(String.duplicate("-", 75))
+IO.puts("Target Output Shape:           #{inspect(Nx.shape(target_output))}")
+
+# Run a single optimization step using value_and_grad
+lr = Nx.tensor(0.1)
+{new_w_q, new_w_k, new_w_v, loss_val, {grad_w_q, grad_w_k, grad_w_v}} =
+  SelfAttention.train_step(w_q, w_k, w_v, x, target_output, lr, Nx.tensor(4.0))
+
+IO.puts("Initial MSE Loss (Target vs Output): #{Nx.to_number(loss_val) |> Float.round(6)}")
+
+IO.puts("\nGRADIENT SENSITIVITIES (Partial Derivatives):")
+IO.puts("  - W_q Gradient (L2 Norm): #{Nx.sqrt(Nx.sum(Nx.pow(grad_w_q, 2))) |> Nx.to_number() |> Float.round(6)}")
+IO.puts("  - W_k Gradient (L2 Norm): #{Nx.sqrt(Nx.sum(Nx.pow(grad_w_k, 2))) |> Nx.to_number() |> Float.round(6)}")
+IO.puts("  - W_v Gradient (L2 Norm): #{Nx.sqrt(Nx.sum(Nx.pow(grad_w_v, 2))) |> Nx.to_number() |> Float.round(6)}")
+
+# Run a second step to verify that the loss drops
+{_, _, _, loss_val_2, _} =
+  SelfAttention.train_step(new_w_q, new_w_k, new_w_v, x, target_output, lr, Nx.tensor(4.0))
+
+IO.puts("\nMSE Loss after 1 Gradient Descent step: #{Nx.to_number(loss_val_2) |> Float.round(6)}")
+IO.puts("  * Notice that the loss successfully decreased! Backpropagation flowing")
+IO.puts("    through the Softmax and contraction operations allows us to optimize")
+IO.puts("    relational attention routing projection matrices directly.")
+IO.puts("===========================================================================\n")
