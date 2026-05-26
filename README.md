@@ -1,3 +1,16 @@
+<p align="center">
+  <img src="assets/ml_musings.svg" width="200" height="200" alt="ML Musings Logo" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/nshkrdotcom/ml_musings">
+    <img src="https://img.shields.io/github/stars/nshkrdotcom/ml_musings?style=for-the-badge&logo=github&color=38bdf8&logoColor=fff" alt="GitHub Repository" />
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/license-MIT-purple?style=for-the-badge&color=a855f7" alt="MIT License" />
+  </a>
+</p>
+
 # TRINITY Foundations: High-Dimensional Geometry, Attention, PEFT, and Black-Box Optimization
 
 This repository houses a comprehensive, hands-on educational curriculum designed to explore the mathematical, geometric, and computational foundations undergirding modern AI models and coordination systems like **TRINITY**.

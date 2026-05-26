@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Premium Neon Border Gradient -->
+    <linearGradient id="border-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />    <!-- Cyan -->
+      <stop offset="50%" stop-color="#6366f1" />   <!-- Indigo -->
+      <stop offset="100%" stop-color="#a855f7" />  <!-- Purple -->
+    </linearGradient>
+
+    <!-- Deep Space Hexagon Background -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19" />
+      <stop offset="100%" stop-color="#161b30" />
+    </linearGradient>
+
+    <!-- Core Glowing Radial Gradient -->
+    <radialGradient id="core-grad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="40%" stop-color="#6366f1" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Glowing Filters -->
+    <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="soft-glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="2.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Transparent Background Container -->
+  <g>
+    <!-- Outer Hexagon Shell with Glowing Border -->
+    <polygon points="100,15 173.6,57.5 173.6,142.5 100,185 26.4,142.5 26.4,57.5"
+             fill="url(#bg-grad)"
+             stroke="url(#border-grad)"
+             stroke-width="5"
+             stroke-linejoin="round" />
+
+    <!-- Concentric Coordinate Hexagons (Subtle Grid Layer) -->
+    <!-- Outer Sub-Ring -->
+    <polygon points="100,25 165.0,62.5 165.0,137.5 100,175 35.0,137.5 35.0,62.5"
+             fill="none"
+             stroke="#6366f1"
+             stroke-width="0.75"
+             stroke-dasharray="2, 4"
+             opacity="0.2" />
+
+    <!-- Inner Sub-Ring -->
+    <polygon points="100,45 147.6,72.5 147.6,127.5 100,155 52.4,127.5 52.4,72.5"
+             fill="none"
+             stroke="#38bdf8"
+             stroke-width="1"
+             stroke-dasharray="4, 3"
+             opacity="0.3" />
+
+    <!-- Core Ring -->
+    <polygon points="100,65 130.3,82.5 130.3,117.5 100,135 69.7,117.5 69.7,82.5"
+             fill="none"
+             stroke="#a855f7"
+             stroke-width="0.75"
+             opacity="0.25" />
+
+    <!-- Curved Attention Routing Pathways (Bezier Curves) -->
+    <!-- Path 1 (Top to Bottom-Right Routing) -->
+    <path d="M 100,45 C 120,65 130,95 147.6,127.5"
+          fill="none"
+          stroke="#38bdf8"
+          stroke-width="1.5"
+          stroke-dasharray="100"
+          stroke-dashoffset="0"
+          opacity="0.7"
+          filter="url(#soft-glow)" />
+
+    <!-- Path 2 (Bottom-Right to Bottom-Left Routing) -->
+    <path d="M 147.6,127.5 C 125,140 75,140 52.4,127.5"
+          fill="none"
+          stroke="#6366f1"
+          stroke-width="1.25"
+          opacity="0.5" />
+
+    <!-- Path 3 (Bottom-Left to Top Routing - Dynamic Active Path) -->
+    <path d="M 52.4,127.5 C 70,95 80,65 100,45"
+          fill="none"
+          stroke="#a855f7"
+          stroke-width="2"
+          stroke-dasharray="5, 3"
+          opacity="0.8"
+          filter="url(#soft-glow)" />
+
+    <!-- Path 4 (Center-Core to Top-Left Routing) -->
+    <path d="M 100,100 Q 70,80 52.4,72.5"
+          fill="none"
+          stroke="#38bdf8"
+          stroke-width="1.5"
+          opacity="0.65" />
+
+    <!-- Path 5 (Center-Core to Bottom Routing) -->
+    <path d="M 100,100 Q 110,135 100,155"
+          fill="none"
+          stroke="#6366f1"
+          stroke-width="1.25"
+          stroke-dasharray="2, 2"
+          opacity="0.6" />
+
+    <!-- Path 6 (Center-Core to Top-Right Routing) -->
+    <path d="M 100,100 Q 130,80 147.6,72.5"
+          fill="none"
+          stroke="#a855f7"
+          stroke-width="1.75"
+          opacity="0.75" />
+
+    <!-- Glowing Core Radial Pulse -->
+    <circle cx="100" cy="100" r="28" fill="url(#core-grad)" opacity="0.6" filter="url(#neon-glow)" />
+
+    <!-- Center Neural Processing Core -->
+    <circle cx="100" cy="100" r="10" fill="#0b0f19" stroke="url(#border-grad)" stroke-width="2" />
+    <circle cx="100" cy="100" r="4" fill="#38bdf8" filter="url(#soft-glow)" />
+
+    <!-- Outer Symmetrical Routing Nodes -->
+    <!-- Node 1: Top (Cyan Active Node) -->
+    <circle cx="100" cy="45" r="5.5" fill="#38bdf8" stroke="#0b0f19" stroke-width="1.5" filter="url(#soft-glow)" />
+    
+    <!-- Node 2: Top-Right (Purple Node) -->
+    <circle cx="147.6" cy="72.5" r="4.5" fill="#a855f7" stroke="#0b0f19" stroke-width="1.25" />
+
+    <!-- Node 3: Bottom-Right (Indigo Active Node) -->
+    <circle cx="147.6" cy="127.5" r="5" fill="#6366f1" stroke="#0b0f19" stroke-width="1.5" filter="url(#soft-glow)" />
+
+    <!-- Node 4: Bottom (Cyan Passive Node) -->
+    <circle cx="100" cy="155" r="4" fill="#38bdf8" stroke="#0b0f19" stroke-width="1" />
+
+    <!-- Node 5: Bottom-Left (Purple Active Node) -->
+    <circle cx="52.4" cy="127.5" r="5.5" fill="#a855f7" stroke="#0b0f19" stroke-width="1.5" filter="url(#soft-glow)" />
+
+    <!-- Node 6: Top-Left (Indigo Passive Node) -->
+    <circle cx="52.4" cy="72.5" r="4.5" fill="#6366f1" stroke="#0b0f19" stroke-width="1.25" />
+
+    <!-- Small Floating Data Packets (High-Dimensional Space) -->
+    <circle cx="80" cy="65" r="1.5" fill="#38bdf8" opacity="0.8" />
+    <circle cx="125" cy="140" r="2" fill="#a855f7" opacity="0.6" />
+    <circle cx="135" cy="60" r="1.5" fill="#6366f1" opacity="0.7" />
+    <circle cx="70" cy="130" r="2" fill="#38bdf8" opacity="0.9" filter="url(#soft-glow)" />
+    <circle cx="110" cy="80" r="1" fill="#ffffff" opacity="0.5" />
+  </g>
+</svg>
