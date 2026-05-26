@@ -9,14 +9,27 @@
 Mix.install([{:nx, "~> 0.12.0"}])
 
 defmodule Geometry do
+  @moduledoc """
+  Toy 1-D-only cosine-similarity helpers.
+
+  PEDAGOGICAL SCOPE: these helpers assume `u`, `v`, and `vector` are RANK-1
+  tensors of shape `{D}`. We deliberately do NOT generalize to batched
+  inputs (e.g. `{N, D}`) so the lesson keeps focus on the geometric
+  intuition of "two arrows in a 2-D plane". A learner who lifts these
+  helpers into a batched model must pass `axes: [-1]` (or equivalent) to
+  `Nx.sum/2` and `Nx.pow/2` reductions; otherwise the math will silently
+  reduce across the batch axis and produce wrong cosine similarities.
+  """
+
   import Nx.Defn
 
-  # 1. NORMALIZATION
+  # 1. NORMALIZATION (1-D vector → unit 1-D vector)
   # If vectors have different lengths, their dot products will scale with length.
   # To focus purely on DIRECTION (semantic meaning), we project the vectors onto
   # a "unit circle" or "unit hypersphere" where every vector has length exactly 1.0.
   defn normalize(vector) do
-    # Compute L2 Norm: sqrt(x^2 + y^2 + ...)
+    # Compute L2 Norm: sqrt(x^2 + y^2 + ...). No axis arg → sums every element.
+    # This is intentional for the 1-D contract documented in @moduledoc.
     length = Nx.sum(Nx.pow(vector, 2)) |> Nx.sqrt()
     # Clamp the norm to a minimum of 1.0e-10 before dividing. This avoids
     # division by zero for the zero vector. (The naive `Nx.add(length, 1.0e-10)`
@@ -26,13 +39,14 @@ defmodule Geometry do
     Nx.divide(vector, safe_length)
   end
 
-  # 2. COSINE SIMILARITY (DOT PRODUCT)
+  # 2. COSINE SIMILARITY (DOT PRODUCT, 1-D contract)
   # Multiplying corresponding coordinates and adding them: u·v = u_x*v_x + u_y*v_y
   defn cosine_similarity(u, v) do
     u_norm = normalize(u)
     v_norm = normalize(v)
-    
-    # Dot product of normalized vectors
+
+    # Sum-of-elementwise-product on rank-1 inputs = dot product. Again, no
+    # axis arg because the 1-D contract is enforced by convention here.
     Nx.sum(Nx.multiply(u_norm, v_norm))
   end
 end
@@ -60,7 +74,7 @@ IO.puts("SIMILARITY CALCULATIONS:")
 IO.puts(String.duplicate("-", 75))
 IO.puts("1. UP vs. RIGHT (90° Angle):")
 IO.puts("   Similarity: #{sim1}")
-IO.puts("   Result    : ALMOST 0 (Perpendicular / Orthogonal / No correlation)")
+IO.puts("   Result    : Near-zero (floating-point; exactly orthogonal analytically)")
 IO.puts("")
 IO.puts("2. UP vs. UP-RIGHT (45° Angle):")
 IO.puts("   Similarity: #{sim2}")

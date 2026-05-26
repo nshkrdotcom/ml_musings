@@ -41,9 +41,12 @@ size = 1_000_000
 Nx.global_default_backend(Nx.BinaryBackend)
 IO.write("1. Allocating and multiplying interpreted tensors (BinaryBackend)... ")
 
-# Allocated on Host RAM
-tensor_a_host = Nx.iota({size})
-tensor_b_host = Nx.iota({size})
+# Allocated on Host RAM, explicitly cast to f32 so we are comparing
+# float-vs-float against the list benchmark in 01_list_math.exs
+# (Nx.iota produces integers by default, which would be an apples-to-oranges
+# comparison vs. the float list pipeline).
+tensor_a_host = Nx.iota({size}) |> Nx.as_type({:f, 32})
+tensor_b_host = Nx.iota({size}) |> Nx.as_type({:f, 32})
 
 {time_interpreted, _} = :timer.tc(fn ->
   Nx.multiply(tensor_a_host, tensor_b_host)
@@ -59,7 +62,13 @@ IO.puts(String.duplicate("-", 75))
 defmodule FastMath do
   import Nx.Defn
 
-  # Fuses operations and compiles directly to native execution instruction sets
+  # Fuses operations and compiles directly to a native execution instruction set.
+  # NOTE: A common misconception is that the body of `defn` is compiled when
+  # this module is LOADED. It is not. `defn` compilation is LAZY: the very
+  # first call to `FastMath.multiply/2` with a specific {shape, dtype, backend}
+  # combination triggers XLA to emit a specialized binary. Subsequent calls
+  # with the same shape/dtype hit the compiled cache. That is why "Test 2"
+  # below is slow and "Test 3" is fast.
   defn multiply(a, b) do
     Nx.multiply(a, b)
   end
@@ -72,13 +81,14 @@ end
 # Set EXLA as default BEFORE allocation so memory is allocated natively on device buffers.
 # (Note: tensor_a_host and tensor_b_host above were allocated under BinaryBackend, so
 # accessing them after this switch would incur an implicit host->device transfer on first use.
-# Below we re-allocate fresh tensors under EXLA to avoid that hidden cost.)
+# Below we re-allocate fresh tensors under EXLA — and cast them to f32 so the
+# benchmark dtype matches Test 1 — to avoid that hidden cost.)
 Nx.global_default_backend(EXLA.Backend)
 IO.write("2. Allocating and running Compiled Tensors (EXLA - First Run JIT)... ")
 
-# Allocated directly in EXLA memory
-tensor_a_device = Nx.iota({size})
-tensor_b_device = Nx.iota({size})
+# Allocated directly in EXLA memory, dtype-aligned with Test 1's f32 tensors.
+tensor_a_device = Nx.iota({size}) |> Nx.as_type({:f, 32})
+tensor_b_device = Nx.iota({size}) |> Nx.as_type({:f, 32})
 
 # The very first time EXLA sees this operation, it compiles the math to native CPU/GPU binary.
 {time_jit, _} = :timer.tc(fn ->
@@ -95,13 +105,23 @@ IO.puts(String.duplicate("-", 75))
 # To make the "memory device gap" concrete, we time a host-allocated tensor being
 # explicitly transferred to the EXLA device buffer using Nx.backend_transfer/2.
 # This isolates the copy cost from the compute cost.
-IO.write("2b. Transferring a 1M-element host tensor to the EXLA device... ")
+#
+# We allocate a DEDICATED f32 BinaryBackend tensor here so the transfer cost
+# we measure is for the same dtype as the device tensors above (otherwise we
+# would be timing a transfer of integer data and reporting it as if it were
+# the float pipeline's overhead).
+IO.write("2b. Transferring a 1M-element f32 host tensor to the EXLA device... ")
+host_float =
+  Nx.with_default_backend(Nx.BinaryBackend, fn ->
+    Nx.iota({size}) |> Nx.as_type({:f, 32})
+  end)
+
 {time_transfer, _} = :timer.tc(fn ->
-  tensor_a_host
+  host_float
   |> Nx.backend_transfer(EXLA.Backend)
 end)
 IO.puts("Done!")
-IO.puts("   - Time taken: #{time_transfer / 1000} ms (pure host->device copy, no math)")
+IO.puts("   - Time taken: #{time_transfer / 1000} ms (pure host->device copy of f32, no math)")
 IO.puts(String.duplicate("-", 75))
 
 

@@ -22,7 +22,10 @@ defmodule RosenbrockObjective do
   # GPU-Compiled Rosenbrock Function: f(x1, x2) = (1 - x1)^2 + 100 * (x2 - x1^2)^2
   # The global minimum is located at [1.0, 1.0] where f(1.0, 1.0) = 0.0
   defn evaluate(coords) do
-    # Extract dimensions using static slices within the compiled graph
+    # Extract dimensions using static slices within the compiled graph.
+    # `coords[[.., 0]]` reads "all rows, axis-1 index 0" — i.e. column 0 of
+    # the {population_size, 2} batch. Verified valid inside `defn` on
+    # Nx 0.12.1 (the `..` Access shortcut is supported).
     x1 = coords[[.., 0]]
     x2 = coords[[.., 1]]
     
@@ -36,6 +39,11 @@ defmodule RosenbrockObjective do
 end
 
 defmodule RosenbrockES do
+  # Convergence threshold: a best-scout loss below this counts as "we
+  # found the [1.0, 1.0] minimum well enough". Used by `Enum.reduce_while`
+  # below to halt the loop early instead of always running all 200 gens.
+  @convergence_loss 0.01
+
   def optimize(generations, population_size, mu) do
     # We start our search mean far from the target [1.0, 1.0].
     # Initial coordinate: [-1.0, 2.0]
@@ -51,40 +59,60 @@ defmodule RosenbrockES do
     IO.puts("Initial Search Mean Position : #{inspect(Nx.to_flat_list(mean))}")
     IO.puts("Initial Mutation Step (σ)    : #{sigma}")
     IO.puts("Target Global Minimum        : [1.0, 1.0]")
+    IO.puts("Convergence threshold        : best_loss < #{@convergence_loss}")
     IO.puts(String.duplicate("=", 75))
 
-    Enum.reduce(1..generations, {mean, sigma}, fn gen, {current_mean, current_sigma} ->
-      # Generate unique, isolated random key for population mutations
-      mutate_key = Nx.Random.key(gen * 100)
+    # Use `Enum.reduce_while/3` so we can stop the moment best_loss crosses
+    # the convergence threshold. This both prints a clear CONVERGED line
+    # AND shaves wall-clock time when the ES happens to find the basin
+    # earlier than the worst-case 200 generations.
+    final_state =
+      Enum.reduce_while(
+        1..generations,
+        {mean, sigma, 0},
+        fn gen, {current_mean, current_sigma, _last_gen} ->
+          # Generate unique, isolated random key for population mutations
+          mutate_key = Nx.Random.key(gen * 100)
 
-      # Sample Phase: Generate mutated population
-      {mutations, _} = Nx.Random.normal(mutate_key, 0.0, 1.0, shape: {population_size, 2})
-      population = Nx.add(current_mean, Nx.multiply(current_sigma, mutations))
+          # Sample Phase: Generate mutated population
+          {mutations, _} = Nx.Random.normal(mutate_key, 0.0, 1.0, shape: {population_size, 2})
+          population = Nx.add(current_mean, Nx.multiply(current_sigma, mutations))
 
-      # Evaluation Phase on GPU
-      losses = RosenbrockObjective.evaluate(population)
+          # Evaluation Phase on GPU
+          losses = RosenbrockObjective.evaluate(population)
 
-      # Selection Phase
-      sorted_indices = Nx.argsort(losses) |> Nx.to_flat_list()
-      best_indices = Enum.take(sorted_indices, mu)
-      best_candidates = Nx.take(population, Nx.tensor(best_indices))
+          # Selection Phase
+          sorted_indices = Nx.argsort(losses) |> Nx.to_flat_list()
+          best_indices = Enum.take(sorted_indices, mu)
+          best_candidates = Nx.take(population, Nx.tensor(best_indices))
 
-      # Recombination: Weighted average of the top mu candidates
-      new_mean = best_candidates
-      |> Nx.multiply(weights)
-      |> Nx.sum(axes: [0])
+          # Recombination: Weighted average of the top mu candidates
+          new_mean = best_candidates
+          |> Nx.multiply(weights)
+          |> Nx.sum(axes: [0])
 
-      # Step-Size Adaptation: Slow and steady decay to navigate the narrow curve
-      new_sigma = if gen > 50, do: current_sigma * 0.98, else: current_sigma
+          # Step-Size Adaptation: Slow and steady decay to navigate the narrow curve
+          new_sigma = if gen > 50, do: current_sigma * 0.98, else: current_sigma
 
-      # Log progress
-      if rem(gen, 30) == 0 or gen == 1 or gen == generations do
-        best_loss = losses[hd(best_indices)] |> Nx.to_number()
-        IO.puts("Gen #{String.pad_leading("#{gen}", 3)} | Best Scout Loss: #{:erlang.float_to_binary(best_loss, [decimals: 5])} | sigma: #{:erlang.float_to_binary(new_sigma, [decimals: 5])} | Current Mean: #{inspect(Nx.to_flat_list(new_mean))}")
-      end
+          best_loss = losses[hd(best_indices)] |> Nx.to_number()
 
-      {new_mean, new_sigma}
-    end)
+          # Log progress
+          if rem(gen, 30) == 0 or gen == 1 or gen == generations do
+            IO.puts("Gen #{String.pad_leading("#{gen}", 3)} | Best Scout Loss: #{:erlang.float_to_binary(best_loss, [decimals: 5])} | sigma: #{:erlang.float_to_binary(new_sigma, [decimals: 5])} | Current Mean: #{inspect(Nx.to_flat_list(new_mean))}")
+          end
+
+          if best_loss < @convergence_loss do
+            IO.puts(">> CONVERGED at gen #{gen} with best_loss = #{:erlang.float_to_binary(best_loss, [decimals: 6])} <<")
+            {:halt, {new_mean, new_sigma, gen}}
+          else
+            {:cont, {new_mean, new_sigma, gen}}
+          end
+        end
+      )
+
+    {final_mean, _final_sigma, last_gen} = final_state
+    IO.puts("Finished at gen #{last_gen}. Final mean: #{inspect(Nx.to_flat_list(final_mean))}")
+    final_state
   end
 
   defp calculate_weights(mu) do

@@ -33,8 +33,14 @@ IO.puts(String.duplicate("=", 75))
 # distinguishable from steady-state execution time (tiny 3-element tensors are
 # dominated by call/dispatch overhead, hiding the actual speedup).
 size = 100_000
-a = Nx.iota({size}) |> Nx.as_type({:f, 32})
-b = Nx.iota({size}) |> Nx.as_type({:f, 32}) |> Nx.multiply(10.0)
+
+# After Mix.install, Nx's default backend is Nx.BinaryBackend, so these
+# tensors are allocated on the host. We will move them to the EXLA device
+# explicitly below before timing the JIT run, so the JIT measurement is
+# purely "compile + execute on already-resident device buffers" and does
+# NOT silently bill the host->device transfer cost to the JIT clock.
+a_host = Nx.iota({size}) |> Nx.as_type({:f, 32})
+b_host = Nx.iota({size}) |> Nx.as_type({:f, 32}) |> Nx.multiply(10.0)
 
 # ---------------------------------------------------------------------------
 # DEMO 1: Running on the Interpreted Binary Backend
@@ -42,9 +48,9 @@ b = Nx.iota({size}) |> Nx.as_type({:f, 32}) |> Nx.multiply(10.0)
 Nx.global_default_backend(Nx.BinaryBackend)
 IO.puts("1. Running with Interpreted Binary Backend (Pure Elixir):")
 
-{time_binary, res_binary} = :timer.tc(fn -> CompilerDemo.compute_square_add(a, b) end)
+{time_binary, res_binary} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_host, b_host) end)
 IO.puts("   - Execution Time: #{time_binary} microseconds")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_binary, [0], [3])))} ... (#{Nx.size(res_binary)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_binary[0..2]))} ... (#{Nx.size(res_binary)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 # ---------------------------------------------------------------------------
@@ -53,13 +59,23 @@ IO.puts(String.duplicate("-", 75))
 # Now, let's switch to the EXLA Backend. This backend hands the Nx AST to
 # Google's XLA (Accelerated Linear Algebra) compiler to generate optimized binary.
 Nx.global_default_backend(EXLA.Backend)
+
+# Explicitly transfer a/b to the EXLA device OUTSIDE the timed block.
+# This is the critical isolation: it ensures the timing below reflects
+# only "XLA emits a binary + first call executes it on device buffers",
+# not "transfer two ~400 KB tensors over PCIe and then compile."
+# Without this, the JIT timing would conflate compile cost and host->device
+# copy cost and the lesson's headline number would be misleading.
+a_device = Nx.backend_transfer(a_host, EXLA.Backend)
+b_device = Nx.backend_transfer(b_host, EXLA.Backend)
+
 IO.puts("2. Running with EXLA Compiler (First Run - JIT Compilation):")
 
 # The first call will trigger the JIT compiler. XLA will compile our 
 # 'compute_square_add' function for the specific CPU instruction set and tensor shapes.
-{time_compile, res_compile} = :timer.tc(fn -> CompilerDemo.compute_square_add(a, b) end)
+{time_compile, res_compile} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_device, b_device) end)
 IO.puts("   - Execution Time: #{time_compile} microseconds (includes compiling code to machine instructions!)")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_compile, [0], [3])))} ... (#{Nx.size(res_compile)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_compile[0..2]))} ... (#{Nx.size(res_compile)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 # ---------------------------------------------------------------------------
@@ -69,9 +85,9 @@ IO.puts("3. Running with EXLA Compiler (Second Run - Compiled Direct Execution):
 
 # Since the code has already been compiled into a machine binary, subsequent
 # runs skip compilation entirely and execute native machine code directly at full hardware speed!
-{time_compiled, res_exla} = :timer.tc(fn -> CompilerDemo.compute_square_add(a, b) end)
+{time_compiled, res_exla} = :timer.tc(fn -> CompilerDemo.compute_square_add(a_device, b_device) end)
 IO.puts("   - Execution Time: #{time_compiled} microseconds")
-IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(Nx.slice(res_exla, [0], [3])))} ... (#{Nx.size(res_exla)} elements total)")
+IO.puts("   - Result[0..2]:   #{inspect(Nx.to_flat_list(res_exla[0..2]))} ... (#{Nx.size(res_exla)} elements total)")
 IO.puts(String.duplicate("-", 75))
 
 IO.puts("""
@@ -84,6 +100,8 @@ WHAT DID WE JUST OBSERVE?
 2. THE JIT COMPILATION STEP (EXLA Backend - First Run):
    Notice how the first run of EXLA is significantly slower. That is because 
    the compiler is building a specialized, high-performance binary for your CPU.
+   (Because we transferred a/b to the device BEFORE the timer started, this
+   number reflects compile + first-execute only, not PCIe transfer.)
 
 3. THE NATIVE RUNTIME (EXLA Backend - Second Run):
    The second run is lightning fast! The Erlang VM bypassed itself entirely and 

@@ -17,11 +17,15 @@ Nx.global_default_backend(EXLA.Backend)
 defmodule GatingLossSimulator do
   import Nx.Defn
 
-  # GPU-Compiled Auxiliary Loss calculation
-  # L_aux = E * sum(f_i * P_i)
-  defn calculate_aux_loss(f_i, p_i, num_experts) do
+  # GPU-Compiled Auxiliary Loss calculation.
+  # L_aux = E * sum(f_i * P_i).
+  # The parameter is named `num_experts_f` to make the float type explicit
+  # (the `_f` suffix mirrors the call-site convention used below). This
+  # avoids the integer-vs-float type-promotion ambiguity that an unsuffixed
+  # `num_experts` would invite.
+  defn calculate_aux_loss(f_i, p_i, num_experts_f) do
     dot_product = Nx.sum(Nx.multiply(f_i, p_i))
-    Nx.multiply(num_experts, dot_product)
+    Nx.multiply(num_experts_f, dot_product)
   end
 
   def run_simulations() do
@@ -64,13 +68,20 @@ defmodule GatingLossSimulator do
       loss_tensor = calculate_aux_loss(f_tensor, p_tensor, num_experts_f)
       loss_val = Nx.to_number(loss_tensor)
 
-      # Generate ASCII bar plot to visualize the penalty curve
-      # Bar spans from 1.0 (min) to 4.0 (max)
+      # Generate ASCII bar plot to visualize the penalty curve.
+      # Bar spans from 1.0 (min) to 4.0 (max).
+      # Defensive clamp into [0.0, 1.0]: if a future edit to `scenarios`
+      # produces a loss_val outside [1.0, 4.0] (e.g. someone passes
+      # all-zero distributions, giving loss_val = 0.0), the unclamped
+      # `(loss_val - 1.0) / 3.0` would go negative and round to a
+      # negative `filled_chars`, which would crash
+      # `String.duplicate/2` with FunctionClauseError. Clamping turns
+      # that into a graceful empty/full bar instead.
       bar_width = 30
-      normalized_val = (loss_val - 1.0) / 3.0 # scale between 0.0 and 1.0
+      normalized_val = max(0.0, min(1.0, (loss_val - 1.0) / 3.0))
       filled_chars = round(normalized_val * bar_width)
       empty_chars = bar_width - filled_chars
-      
+
       bar = String.duplicate("█", filled_chars) <> String.duplicate("░", empty_chars)
 
       IO.puts("\nScenario: #{label}")

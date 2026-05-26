@@ -29,10 +29,16 @@ defmodule SoftmaxCollapse do
   end
 
   # SOFTMAX JACOBIAN: J[i,j] = s_i * (delta_ij - s_j) = diag(s) - s * s^T
-  # Given a 1-D softmax vector `s` of length N, returns an {N, N} Jacobian matrix.
+  # Given a 2-D softmax row of shape `{1, N}`, returns an `{N, N}` Jacobian.
   # We use this below to empirically demonstrate that when softmax collapses to a
   # near-one-hot distribution, every entry of the Jacobian is approximately zero,
   # making backprop unable to push gradient through the attention layer.
+  #
+  # WHY `Nx.size/1` IS SAFE HERE: inside `defn`, shapes are static (XLA
+  # specializes per shape), so `Nx.size(s)` and `Nx.size(s_vec)` resolve to
+  # plain Elixir integers at trace time. Building `Nx.reshape(s_vec, {n, 1})`
+  # with `n = Nx.size(s_vec)` is therefore a static-shape reshape, not a
+  # dynamic-shape reshape. This was verified directly against Nx 0.12.1.
   defn softmax_jacobian(s) do
     # s is shape {1, N}. Squeeze to a 1-D vector of length N.
     s_vec = Nx.reshape(s, {Nx.size(s)})
@@ -45,12 +51,14 @@ defmodule SoftmaxCollapse do
 
   # Generate synthetic high-variance attention scores representing large-D projections
   def generate_scores(dim, num_tokens) do
-    # Variance of random dot product scales linearly with dimension D.
-    # Therefore, standard deviation scales with sqrt(D).
+    # Variance of a dot product between two D-dimensional unit-ish vectors
+    # scales LINEARLY with D, so the standard deviation scales with sqrt(D).
+    # std_dev = sqrt(D)  =>  Var(scores) ≈ D
+    # That is the variance regime we want to recreate so the demo below is
+    # representative of what a real attention head sees at D = 1024.
     std_dev = :math.sqrt(dim)
-    
+
     key = Nx.Random.key(42)
-    # Generate scores with expected variance equal to the dimension size
     {scores, _key} = Nx.Random.normal(key, 0.0, std_dev, shape: {1, num_tokens})
     scores
   end
@@ -77,7 +85,7 @@ IO.puts("\n" <> String.duplicate("=", 75))
 IO.puts("EXERCISE 1: PROVING THE SOFTMAX ONE-HOT COLLAPSE (D = 1024)")
 IO.puts(String.duplicate("=", 75))
 
-# Generate scores: variance = 1024, standard deviation ≈ 32.0
+# Generate scores: std_dev = sqrt(D) = sqrt(1024) = 32.0, so Var ≈ 1024
 raw_scores = SoftmaxCollapse.generate_scores(dim, num_tokens)
 {unscaled_sm, scaled_sm, scaled_scores} = SoftmaxCollapse.compare_distributions(raw_scores, dim)
 
@@ -166,6 +174,17 @@ collapsed_l1 = unscaled_jacobian |> Nx.abs() |> Nx.sum() |> Nx.to_number()
 scaled_max_abs = scaled_jacobian |> Nx.abs() |> Nx.reduce_max() |> Nx.to_number()
 scaled_l1 = scaled_jacobian |> Nx.abs() |> Nx.sum() |> Nx.to_number()
 
+# Guard against division-by-near-zero when the collapsed Jacobian is so
+# small that its L1 underflows or is dominated by float noise. (For
+# realistic D=1024 we observe ~1e-7 magnitudes — not zero, but small
+# enough that the ratio is the whole point we're trying to illustrate.)
+ratio_label =
+  if collapsed_l1 < 1.0e-10 do
+    "∞ (collapsed_l1 is effectively zero — gradients vanish completely)"
+  else
+    "#{:erlang.float_to_binary(scaled_l1 / collapsed_l1, [decimals: 2])}x"
+  end
+
 IO.puts("\n" <> String.duplicate("=", 75))
 IO.puts("EMPIRICAL SOFTMAX JACOBIAN COMPARISON")
 IO.puts(String.duplicate("=", 75))
@@ -184,7 +203,7 @@ IO.puts("2. SCALED JACOBIAN:")
 IO.inspect(scaled_jacobian)
 IO.puts("   - max |J[i,j]| = #{:erlang.float_to_binary(scaled_max_abs, [decimals: 8])}")
 IO.puts("   - sum |J[i,j]| = #{:erlang.float_to_binary(scaled_l1, [decimals: 8])}")
-IO.puts("   - L1 ratio scaled/collapsed: #{:erlang.float_to_binary(scaled_l1 / collapsed_l1, [decimals: 2])}x more gradient mass when scaled.")
-IO.puts("   * Diagonal entries are O(0.1) and off-diagonals are O(0.01-0.15):
-   *   gradient flow is alive and the layer can learn.")
+IO.puts("   - L1 ratio scaled/collapsed: #{ratio_label} more gradient mass when scaled.")
+IO.puts("   * Diagonal entries are O(0.1) and off-diagonals are O(0.01-0.15):")
+IO.puts("   *   gradient flow is alive and the layer can learn.")
 IO.puts(String.duplicate("=", 75))

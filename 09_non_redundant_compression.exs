@@ -32,7 +32,8 @@ defmodule NonRedundantMatrixSurgery do
     {u, s, vt} = Nx.LinAlg.svd(matrix)
     sigma = Nx.make_diagonal(s)
 
-    # In Elixir's Nx, multidimensional slicing requires double brackets: tensor[[range1, range2]]
+    # In Elixir's Nx, multidimensional slicing requires double brackets: tensor[[range1, range2]].
+    # Ranges are INCLUSIVE on both ends, so `0..rank-1` selects exactly `rank` indices.
     {height, width} = Nx.shape(matrix)
     u_truncated     = u[[0..height-1, 0..rank-1]]
     sigma_truncated = sigma[[0..rank-1, 0..rank-1]]
@@ -55,8 +56,11 @@ defmodule NonRedundantMatrixSurgery do
     # 1. Mean Squared Error (MSE)
     mse = Nx.mean(Nx.pow(diff, 2)) |> Nx.to_number()
 
-    # 2. Frobenius Norm (L2 Matrix Error)
-    l2_error = Nx.LinAlg.norm(diff) |> Nx.to_number()
+    # 2. Frobenius Norm (L2 Matrix Error). We pass `ord: :frobenius`
+    #    explicitly even though Nx 0.12.1's default for a 2-D matrix is
+    #    already Frobenius — being explicit guards against future Nx
+    #    versions or readers who only learn from this snippet.
+    l2_error = Nx.LinAlg.norm(diff, ord: :frobenius) |> Nx.to_number()
 
     {mse, l2_error}
   end
@@ -109,5 +113,38 @@ low-rank subspace.
 By freezing W_0 and training only the low-rank bypass (A and B), we preserve
 the full-rank pre-trained knowledge while dynamically adapting the model with
 minimal parameters and zero information leakage!
+""")
+IO.puts(String.duplicate("=", 75))
+
+# ---------------------------------------------------------------------------
+# EMPIRICAL "DELTA IS LOW-RANK" PROOF
+# ---------------------------------------------------------------------------
+# The closing paragraph asserts that fine-tune deltas live in a low-rank
+# subspace. Let's not hand-wave it: construct a small synthetic adapter
+# delta the same way LoRA does (delta = B · A, where B is {D, r} and A is
+# {r, D}), then take an SVD and show that only `r` singular values are
+# non-trivial, regardless of how large D is.
+IO.puts("\n" <> String.duplicate("=", 75))
+IO.puts("APPENDIX: EMPIRICAL SVD DECAY OF A SYNTHETIC LoRA ADAPTER DELTA")
+IO.puts(String.duplicate("=", 75))
+
+# Construct a rank-1 adapter delta over D=4 features.
+b_factor = Nx.tensor([[0.9], [0.1], [-0.4], [0.6]])           # shape {D=4, r=1}
+a_factor = Nx.tensor([[1.0, 2.0, 1.0, 0.5]])                  # shape {r=1, D=4}
+delta = Nx.dot(b_factor, a_factor)                            # shape {4, 4}, rank 1
+
+IO.puts("Synthetic adapter delta = B · A  (B: {4,1}, A: {1,4}, rank-1 by construction):")
+IO.inspect(delta)
+
+{_u_d, s_d, _vt_d} = Nx.LinAlg.svd(delta)
+IO.puts("\nSingular values of delta:")
+IO.inspect(s_d)
+IO.puts("""
+* Insight: only the FIRST singular value is materially non-zero. Every
+  other singular value is numerical noise (≈ 1e-7 or smaller in f32).
+  This is the empirical demonstration of the LoRA assumption: even though
+  W_0 needs full rank to be useful, the per-task UPDATE we add to it can
+  be expressed in `r << D` directions without losing information about
+  the update itself.
 """)
 IO.puts(String.duplicate("=", 75))

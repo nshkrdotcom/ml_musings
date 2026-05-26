@@ -52,6 +52,15 @@ defmodule LinearProbe do
 
   # L2 weight-decay coefficient. Small value: enough to bias the probe toward
   # simpler separating hyperplanes without dominating the gradient signal.
+  #
+  # NOTE: this module attribute is interpolated to the float literal 0.001
+  # at the Elixir compile site (NOT inside defn), and then passed to
+  # `update/6` and `loss/5` as an explicit defn parameter (see the call
+  # site below). That means lambda flows through defn as a scalar tensor
+  # argument with a stable type/shape, and there is NO per-call XLA
+  # recompilation. (If you ever switch lambda to a value that changes
+  # between calls, make sure it still arrives as the same scalar dtype to
+  # keep the compiled cache warm.)
   @lambda 0.001
 
   # 1. MODEL PREDICTION FORMULA (z = w · x + b)
@@ -102,6 +111,9 @@ defmodule LinearProbe do
 
   # 4. OUT-OF-SAMPLE ACCURACY EVALUATOR (Exercise 1)
   # Runs inference on unseen validation datasets and computes classification accuracy.
+  # CONTRACT: returns accuracy AS A PERCENTAGE in [0.0, 100.0] (the final
+  # `Nx.multiply(100.0)` is the unit-conversion step). The Wilson-CI code
+  # below depends on this percentage convention.
   defn evaluate(w, b, x_val, y_val) do
     preds = predict(w, b, x_val)
     # Threshold predictions at 0.5: >= 0.5 is Class 1 (Writing), < 0.5 is Class 0 (Math)
@@ -116,6 +128,12 @@ defmodule LinearProbe do
   def run_curriculum(epochs, lr) do
     # Generate Training dataset (Seed 42)
     {x_train, y_train} = SyntheticData.generate(1000, 42)
+
+    # [DEV] One-shot startup log of the backend the training tensors actually
+    # landed on. If this prints anything other than EXLA.Backend (e.g. because
+    # Nx.Random fell back to BinaryBackend on this Nx version), the per-epoch
+    # `update/6` will silently incur a host->device round-trip every call.
+    IO.puts("[DEV] x_train backend: #{inspect(Nx.backend(x_train))}")
 
     # Generate Unseen Out-of-Sample Validation dataset (Seed 999 for Exercise 1)
     {x_val, y_val} = SyntheticData.generate(500, 999)
@@ -168,11 +186,16 @@ defmodule LinearProbe do
     # interval gives an asymmetric range [lower, upper] that, under the binomial
     # model, contains the true success probability with ~95% confidence.
     n_val = 500
+    # `evaluate/4` returns accuracy as a percentage in [0.0, 100.0] (see its
+    # CONTRACT note), so we divide by 100.0 to convert into a probability
+    # `p_hat` in [0.0, 1.0]. The Wilson formula expects probability units.
     p_hat = final_val_acc / 100.0
     z = 1.96
     denom = 1.0 + z * z / n_val
     center = (p_hat + z * z / (2.0 * n_val)) / denom
     margin = (z * :math.sqrt(p_hat * (1.0 - p_hat) / n_val + z * z / (4.0 * n_val * n_val))) / denom
+    # Convert back to percentage units for display; clamp to [0%, 100%]
+    # since the Wilson bounds can technically exceed [0, 1] before clamping.
     lower = max(0.0, (center - margin) * 100.0)
     upper = min(100.0, (center + margin) * 100.0)
     IO.puts("Wilson 95% CI for validation accuracy: " <>

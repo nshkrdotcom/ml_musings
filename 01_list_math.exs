@@ -25,14 +25,17 @@ list_b = Enum.map(1..size, &(&1 * 1.0))
 IO.puts("Done!")
 
 IO.write("Running list multiplication on CPU... ")
-{time, result_length} = :timer.tc(fn ->
-  # Multiply element-by-element. We assign the result and call length/1 on it
-  # inside the timed block so the BEAM compiler cannot dead-code-eliminate
-  # the zip_with/3 call (which would make the benchmark meaningless).
+{time, result_sum} = :timer.tc(fn ->
+  # Multiply element-by-element. We immediately reduce the result with
+  # Enum.sum/1 so the timed block must (a) construct every product and
+  # (b) READ every product value (not just walk the cons-cell spine the
+  # way length/1 would). This is defence-in-depth against any future
+  # Elixir/BEAM optimization that might short-circuit the multiplication
+  # if the closure values were never observed.
   result = Enum.zip_with(list_a, list_b, fn a, b -> a * b end)
-  length(result)
+  Enum.sum(result)
 end)
-IO.puts("Done! (computed #{result_length} products)")
+IO.puts("Done! (sum-of-products = #{result_sum})")
 
 IO.puts("\n" <> String.duplicate("-", 75))
 IO.puts("RESULT:")
@@ -45,7 +48,17 @@ WHY IS THIS TOO SLOW FOR MACHINE LEARNING?
 1. THE LINKED LIST PRIMITIVE:
    In Elixir (and the Erlang BEAM virtual machine), a List is represented as a
    singly-linked list. Each item is stored in a separate, disjoint location in
-   RAM, pointing to the next node. 
+   RAM, pointing to the next node.
+
+   Approximate bytes touched per element on a 64-bit BEAM:
+     - list_a: ~8 bytes float payload + ~8 bytes next-cell pointer = ~16 B/elem
+     - list_b: another ~16 B/elem
+     - result: another ~16 B/elem
+   Compared to a Float32 Nx tensor of size N: just 4*N bytes laid out
+   contiguously. For N = 1,000,000 floats the list pipeline can easily
+   touch ~48 MB of scattered memory, vs. ~4 MB contiguous for the tensor
+   path. That's why the cache misses we describe below are not a small
+   tax — they dominate runtime.
 
 2. POINTER CHASING OVERHEAD:
    To perform list_a * list_b, the CPU cannot load all data at once. It must:

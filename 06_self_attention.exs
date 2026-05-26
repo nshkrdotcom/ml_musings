@@ -69,6 +69,9 @@ defmodule SelfAttention do
     # ---------------------------------------------------------------------------
     # We divide by the square root of the head dimension to pull the variance of
     # the raw scores back to 1.0. This prevents the Softmax function from collapsing.
+    # SHAPES: head_dim is a 0-D scalar tensor ({}); Nx.sqrt of a 0-D tensor
+    # stays 0-D, so scale_factor is also {}. Dividing the {3,3} raw_scores by
+    # a {} scalar broadcasts the scalar across every element of raw_scores.
     scale_factor = Nx.sqrt(head_dim)
     scaled_scores = Nx.divide(raw_scores, scale_factor)
 
@@ -152,6 +155,14 @@ IO.puts("\n4. ATTENTION WEIGHTS (Softmax percentages):")
 IO.inspect(weights)
 IO.puts("   * Insight: Row 2 ('cat') distributes: 15.5% to 'The', 70.0% to itself,")
 IO.puts("     and 14.4% to 'sat'. Gradients remain highly alive!")
+
+# Invariant check: row sums of a softmax-along-last-axis matrix must be 1.0
+# for every row. Printing this lets a learner empirically VERIFY that we
+# implemented softmax correctly (i.e., the per-row attention budget is 100%).
+IO.puts("\n   * Sanity check — row sums of attention weights (should all be ~1.0):")
+weights
+|> Nx.sum(axes: [1])
+|> IO.inspect(label: "       row sums")
 
 IO.puts("\n5. FINAL OUTPUT (Information Extracted & Routed):")
 IO.inspect(output)

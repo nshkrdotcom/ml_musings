@@ -48,10 +48,19 @@ defmodule SphereES do
   # This is a realistic design: evaluating the scouts (e.g. hitting APIs or 
   # running tasks) is an orchestrator-level execution.
   def optimize(generations, population_size, mu) do
-    # 1. Initialize our search distribution Mean (m) and Step Size (sigma)
-    # We start our mean far away from the origin: [5.0, -5.0]
+    # 1. Initialize our search distribution Mean (m) and Step Size (sigma).
+    # We start our mean far away from the origin: [5.0, -5.0].
     mean = Nx.tensor([5.0, -5.0])
-    sigma = 1.0 # Initial mutation strength (search radius)
+
+    # SIGMA TUNING RULE OF THUMB: pick sigma so that
+    #   distance_from_optimum / sigma  ≈  3-5 standard deviations.
+    # Here the L2 distance from start [5.0, -5.0] to the origin is
+    # sqrt(50) ≈ 7.07. With sigma = 2.0 that puts the optimum
+    # ~3.5σ away, which is comfortably reachable by Gaussian mutations
+    # within the first few generations. (The old sigma = 1.0 put the
+    # optimum ~7σ away and required many generations just to graze
+    # the basin.)
+    sigma = 2.0
 
     # Pre-calculate normalized recombination weights favoring top-performing scouts
     weights = calculate_weights(mu)
@@ -75,7 +84,11 @@ defmodule SphereES do
       # 3. EVALUATION PHASE: Measure the fitness (loss) of each candidate in the black box
       losses = NoisyObjective.evaluate(population, noise_key)
 
-      # 4. SELECTION PHASE: Sort the candidates by performance (lowest loss is best)
+      # 4. SELECTION PHASE: Sort the candidates by performance (lowest loss is best).
+      # NOTE: `best_indices` is non-empty as long as `mu >= 1` and `population_size >= mu`,
+      # which the call site below guarantees. If you ever set `mu = 0`, the
+      # `hd(best_indices)` lookup further down will crash with a confusing
+      # `Enum.EmptyError`-style message — keep `mu >= 1`.
       sorted_indices = Nx.argsort(losses) |> Nx.to_flat_list()
       best_indices = Enum.take(sorted_indices, mu)
 

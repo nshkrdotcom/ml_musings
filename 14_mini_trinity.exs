@@ -55,14 +55,25 @@ defmodule MiniTrinity.Router do
   Runs as a compiled computation graph directly on the hardware device.
   """
   defn select_expert(task_vector, routing_weights) do
-    # Dot product: Logits = Task . Weights^T (Lesson 2 classification hyperplane)
+    # Dot product: Logits = Task . Weights^T (Lesson 2 classification hyperplane).
+    #
+    # SHAPES: task_vector has shape {D=2}, routing_weights has shape {E=3, D=2}.
+    # We contract axis 0 of `task_vector` (the only axis it has — the feature
+    # axis) with axis 1 of `routing_weights` (the matching feature axis). The
+    # survivors are: (nothing from task_vector) and axis-0 of routing_weights
+    # (size E=3) → resulting logits shape {3}.
     logits = Nx.dot(task_vector, [0], routing_weights, [1])
     
     # Stable Softmax projects logits to a normalized probability distribution (Lesson 3 & 6)
     stable_softmax(logits)
   end
 
-  # Custom implementation of numerical-stable softmax to prevent logit collapse/overflow
+  # Custom implementation of numerical-stable softmax to prevent logit collapse/overflow.
+  # NOTE: this is intentionally duplicated from MoERouter in lesson 12 so that
+  # this file can be run with a plain `elixir 14_mini_trinity.exs` without
+  # cross-file imports. In a production codebase the right move is to extract
+  # this and similar numeric primitives into a shared `MyApp.Nx.Numerics`
+  # module that both lesson 12 and the capstone import.
   defn stable_softmax(t) do
     max_vals = Nx.reduce_max(t, axes: [-1], keep_axes: true)
     t_shifted = Nx.subtract(t, max_vals)
@@ -213,9 +224,18 @@ defmodule MiniTrinity.Coordinator do
       1 -> 
         IO.puts("Warping coordinate space: Shifting AWAY from Creative quadrant (moving down)...")
         Nx.subtract(vector, Nx.tensor([0.0, 2.5])) # Move down along Y axis
-      2 -> 
+      2 ->
         IO.puts("Warping coordinate space: Shifting AWAY from Cheap Generalist (escalating to Creative)...")
-        # Shift task vector toward Creative Specialist quadrant to force escalation
+        # NOTE: this is a HARD RESET to the creative quadrant rather than a
+        # relative shift like experts 0 and 1 above. The semantic intent is
+        # "expert 2 is our cheap fallback; if it fails, jump straight to the
+        # creative specialist's region of the manifold so the router on the
+        # next turn picks expert 1 with high confidence". The exact coords
+        # [-0.5, 2.0] were chosen so that
+        #   logits = [-0.5*2.0 + 2.0*(-1.0), -0.5*(-1.0) + 2.0*2.0, -0.5*1.2 + 2.0*1.2]
+        #          = [-3.0, 4.5, 1.8]
+        # gives expert 1 a comfortable margin (see manual trace beside Test
+        # Case 2 below for the full hand-calculation).
         Nx.tensor([-0.5, 2.0])
     end
   end
@@ -267,6 +287,31 @@ MiniTrinity.Coordinator.run(
 # Test Case 2: Multi-step routing with failure, coordinate warping, and escalation.
 # A creative task starts at the neutral origin -> routed to Expert 2 ->
 # Expert 2 crashes/fails -> Verifier triggers warp -> Routed to Expert 1 -> Success!
+#
+# MANUAL TRACE (hand-computed so the math is reproducible without running the script):
+#
+#   TURN 1
+#     task_vector = [0.1, 0.15]
+#     routing_weights rows (R_e = [w_x, w_y]):
+#       R_0 = [ 2.0, -1.0]
+#       R_1 = [-1.0,  2.0]
+#       R_2 = [ 1.2,  1.2]
+#     logits = [task · R_0, task · R_1, task · R_2]
+#            = [0.1*2.0 + 0.15*(-1.0), 0.1*(-1.0) + 0.15*2.0, 0.1*1.2 + 0.15*1.2]
+#            = [0.05, 0.20, 0.30]
+#     argmax → Expert 2 (loss-leader pick because the task vector is near origin).
+#     Expert 2 returns {:error, "Out of Memory / Timeout", 0.01}.
+#     Verifier triggers REVISE → warp_context_coordinates(_, 2) hard-resets
+#     task_vector to [-0.5, 2.0].
+#
+#   TURN 2
+#     task_vector = [-0.5, 2.0]
+#     logits = [(-0.5)*2.0 + 2.0*(-1.0), (-0.5)*(-1.0) + 2.0*2.0, (-0.5)*1.2 + 2.0*1.2]
+#            = [-3.0, 4.5, 1.8]
+#     argmax → Expert 1 (creative specialist), as designed.
+#     Expert 1 returns {:ok, "Once upon a time in Elixir...", 0.08} → Verifier ACCEPTs.
+#
+#   FINAL: success in 2 turns, total cost = $0.01 + $0.08 = $0.09.
 MiniTrinity.Coordinator.run(
   "Write a prose essay on Erlang actor systems",
   :creative,

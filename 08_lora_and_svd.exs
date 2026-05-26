@@ -32,8 +32,10 @@ defmodule MatrixSurgery do
     # Convert the 1D list of singular values into a diagonal matrix using Nx.make_diagonal
     sigma = Nx.make_diagonal(s)
 
-    # 2. Extract only the top 'r' components (rank restriction / truncation)
-    #    In Elixir's Nx, multidimensional slicing requires double brackets: tensor[[range1, range2]]
+    # 2. Extract only the top 'r' components (rank restriction / truncation).
+    # NOTE: in Nx 0.12 ranges in Access slicing (`tensor[[range1, range2]]`)
+    # are INCLUSIVE on both ends, so `0..rank-1` selects exactly `rank`
+    # indices. (Verified against deps/nx Access docs and a smoke test.)
     {height, width} = Nx.shape(matrix)
     u_truncated     = u[[0..height-1, 0..rank-1]]
     sigma_truncated = sigma[[0..rank-1, 0..rank-1]]
@@ -53,34 +55,39 @@ defmodule LoRALayer do
 
   # Use defn to compile our forward pass to native machine code.
   #
-  # CONVENTION (Hu et al. 2021):
-  #   h = W_0 x + (alpha / r) * B A x       where
-  #     W_0 has shape {D, D}              (frozen pre-trained weights)
-  #     A   has shape {r, D}              (down-projection)
-  #     B   has shape {D, r}              (up-projection)
+  # SHAPES ACTUALLY USED IN THIS FILE (kept consistent with the call site
+  # below so the docstring does not lie about what flows through `defn`):
   #
-  # In this implementation we batch over rows (x is shape {N, D}, one row per
-  # token), so the equivalent computation is:
-  #   Y = X * W_0^T + (alpha / r) * (X * A^T) * B^T
-  # which is what `Nx.dot(... [1], ..., [1])` expresses below.
+  #   x       : {N, D}    rows are token activations to be adapted
+  #   w_0     : {D, D}    frozen pre-trained weight matrix
+  #   lora_a  : {r, D}    "down-projection". Plays the role of A in
+  #                       Hu et al. 2021 (A is {r, D} there too).
+  #   lora_b  : {r, D}    "up-projection ALREADY TRANSPOSED". The Hu et al.
+  #                       paper writes B with shape {D, r}; this file passes
+  #                       in B^T directly so a single `Nx.dot(..., [1], ..., [0])`
+  #                       contraction matches without an extra transpose step.
+  #
+  # Operationally that means we compute:
+  #
+  #     Y = X * W_0^T + (alpha / r) * (X * A^T) * B
+  #
+  # where A^T comes from `Nx.dot(x, [1], lora_a, [1])` and B (= our `lora_b`)
+  # gets contracted via `Nx.dot(compressed, [1], lora_b, [0])`. The end-to-end
+  # output shape stays {N, D}.
   defn forward(x, w_0, lora_a, lora_b, alpha, rank) do
     # 1. Frozen path: X * W_0^T
     #    Contract axis 1 of x (feature) with axis 1 of W_0 (input).
     #    x: {N, D} -> output_0: {N, D}
     output_0 = Nx.dot(x, [1], w_0, [1])
 
-    # 2. Trainable low-rank path: X * A^T then * B^T
-    #    lora_a plays the role of A (shape: {r, D}); contract axis 1 of x with axis 1 of A.
-    #    Result: {N, r}.
+    # 2. Trainable low-rank path: X * A^T then * B
+    #    lora_a is {r, D}; contract axis 1 of x with axis 1 of lora_a.
+    #    Result `compressed` has shape {N, r}.
     compressed = Nx.dot(x, [1], lora_a, [1])
 
-    #    lora_b is the {r, D} matrix used to project compressed back up; contract axis 1
-    #    of compressed (dimension r) with axis 0 of lora_b (dimension r). Result: {N, D}.
-    #
-    #    NOTE on naming: a literal Hu-et-al "B" would have shape {D, r}. Here we keep the
-    #    variable name `lora_b` for parity with the paper's vocabulary, but the tensor we
-    #    actually pass at the call site is shape {r, D} and represents B^T directly. The
-    #    contraction axes below are consistent with that.
+    #    lora_b is {r, D} (already-transposed B from the docstring above).
+    #    Contract axis 1 of `compressed` (size r) with axis 0 of lora_b (size r).
+    #    Result `delta` has shape {N, D}.
     delta = Nx.dot(compressed, [1], lora_b, [0])
 
     # 3. Scale the low-rank delta by alpha / r (LoRA paper's standard scaling).
@@ -127,12 +134,10 @@ IO.puts("     because all other dimensions were completely redundant.")
 x = Nx.tensor([[1.0, 1.0, 1.0, 1.0]])
 
 # Define a Rank-1 LoRA Bypass (rank r = 1)
-# lora_a compresses from D=4 to r=1 (Shape: {1, 4})
+# lora_a compresses from D=4 to r=1; shape is {r, D} = {1, 4}.
 lora_a = Nx.tensor([[0.5, 0.5, 0.5, 0.5]])
-# lora_b expands from r=1 back up to D=4. As constructed below it is shape
-# {1, 4}, which represents B^T in the standard convention (B itself would be
-# shape {4, 1}). The contraction axes inside `forward/6` are matched to this
-# convention; see the docstring on LoRALayer.forward/6.
+# lora_b is the {r, D} up-projection passed in already-transposed (see the
+# SHAPES docstring on LoRALayer.forward/6). Its shape here is {1, 4}.
 lora_b = Nx.tensor([[1.0, 2.0, 1.0, 0.5]])
 
 final_out = LoRALayer.forward(x, w_0, lora_a, lora_b, 1.0, 1.0)

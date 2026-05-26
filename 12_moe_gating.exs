@@ -26,7 +26,16 @@ defmodule MoERouter do
     Nx.divide(exps, sum_exps)
   end
 
-  # Use defn to compile our routing logic and loss calculation to GPU kernels
+  # Use defn to compile our routing logic and loss calculation to GPU kernels.
+  #
+  # STATIC-SHAPE ASSUMPTION (important): `num_tokens` and `num_experts`
+  # below come from `Nx.axis_size/2`, which resolves to a plain Elixir
+  # integer at `defn` trace time (because XLA specializes per-shape, and
+  # `x` and `w_g` are passed in as concrete tensors whose shapes are
+  # known statically). That means `Nx.iota({1, num_experts})` is a
+  # static-shape op, NOT a dynamic-shape one — verified on Nx 0.12.1.
+  # If you ever wrap this defn in a higher-order op that feeds it
+  # tensors with variable shapes, you must hoist these sizes out of defn.
   defn route_and_calculate_loss(x, w_g) do
     num_tokens = Nx.axis_size(x, 0)
     num_experts = Nx.axis_size(w_g, 0)
@@ -57,8 +66,12 @@ defmodule MoERouter do
     f_i = Nx.divide(Nx.sum(one_hot_selections, axes: [0]), num_tokens)
 
     # Step 5: Compute the Auxiliary Load Balancing Loss: L_aux = E * sum(f_i * P_i)
+    # We multiply `num_experts` by `1.0` to promote the integer constant to
+    # a float scalar at trace time. This avoids any type-promotion ambiguity
+    # downstream and keeps the result as f32 even on backends that are
+    # strict about mixed-type Nx.multiply.
     dot_product = Nx.sum(Nx.multiply(f_i, p_i))
-    aux_loss = Nx.multiply(num_experts, dot_product)
+    aux_loss = Nx.multiply(num_experts * 1.0, dot_product)
 
     {selected_expert_indices, f_i, p_i, aux_loss}
   end
